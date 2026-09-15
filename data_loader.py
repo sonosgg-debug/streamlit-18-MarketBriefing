@@ -8,16 +8,31 @@ data_loader.py
 import requests
 import yfinance as yf
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 from zoneinfo import ZoneInfo
+
+def get_now_kst():
+    """한국 표준시(KST, UTC+9) 반환 (서버 OS 타임존 무관)"""
+    try:
+        return datetime.now(ZoneInfo('Asia/Seoul'))
+    except Exception:
+        return datetime.now(timezone(timedelta(hours=9)))
+
+def get_now_ny():
+    """미국 뉴욕 동부 표준시(ET) 반환 (서버 OS 타임존 무관)"""
+    try:
+        return datetime.now(ZoneInfo('America/New_York'))
+    except Exception:
+        # 서머타임 고려 기본 오프셋 fallback
+        return datetime.now(timezone(timedelta(hours=-4)))
 
 def get_market_status(market='KRX'):
     """
-    현재 시각 기준 실시간 장중 여부 및 시장 운영 상태 반환
+    서버 환경(로컬 PC 또는 UTC 기반 클라우드 서버)에 관계없이
+    항상 한국 표준시(KST) 및 뉴욕 표준시(ET)를 기준으로 실시간 장중 여부 정확히 판정
     """
-    now_kst = datetime.now()
-    
     if market == 'KRX':
+        now_kst = get_now_kst()
         weekday = now_kst.weekday() # 0:월 ~ 4:금, 5:토, 6:일
         if weekday >= 5:
             return {
@@ -27,7 +42,8 @@ def get_market_status(market='KRX'):
                 'is_live': False,
                 'title_suffix': '마감 종합 리포트',
                 'time_str': f"{now_kst.strftime('%Y-%m-%d')} (직전 정규장 마감)",
-                'closing_word': '마감'
+                'closing_word': '마감',
+                'current_time_str': now_kst.strftime('%H:%M:%S KST')
             }
         
         cur_time = now_kst.time()
@@ -42,7 +58,8 @@ def get_market_status(market='KRX'):
                 'is_live': True,
                 'title_suffix': '실시간 마켓 브리핑',
                 'time_str': f"{now_kst.strftime('%Y-%m-%d %H:%M')} (실시간 장중)",
-                'closing_word': '진행 중'
+                'closing_word': '진행 중',
+                'current_time_str': now_kst.strftime('%H:%M:%S KST')
             }
         elif cur_time < market_open:
             return {
@@ -52,7 +69,8 @@ def get_market_status(market='KRX'):
                 'is_live': False,
                 'title_suffix': '개장 전 브리핑 (전일 마감 기준)',
                 'time_str': f"{now_kst.strftime('%Y-%m-%d')} (직전 정규장 마감)",
-                'closing_word': '마감'
+                'closing_word': '마감',
+                'current_time_str': now_kst.strftime('%H:%M:%S KST')
             }
         else:
             return {
@@ -62,11 +80,12 @@ def get_market_status(market='KRX'):
                 'is_live': False,
                 'title_suffix': '마감 종합 리포트',
                 'time_str': f"{now_kst.strftime('%Y-%m-%d')} (정규장 마감)",
-                'closing_word': '마감'
+                'closing_word': '마감',
+                'current_time_str': now_kst.strftime('%H:%M:%S KST')
             }
             
     else: # US
-        now_ny = datetime.now(ZoneInfo('America/New_York'))
+        now_ny = get_now_ny()
         weekday = now_ny.weekday()
         if weekday >= 5:
             return {
@@ -76,7 +95,8 @@ def get_market_status(market='KRX'):
                 'is_live': False,
                 'title_suffix': '마감 종합 리포트',
                 'time_str': f"{now_ny.strftime('%Y-%m-%d')} ET (직전 거래일 마감)",
-                'closing_word': '마감'
+                'closing_word': '마감',
+                'current_time_str': now_ny.strftime('%H:%M:%S ET')
             }
             
         cur_time = now_ny.time()
@@ -91,7 +111,8 @@ def get_market_status(market='KRX'):
                 'is_live': True,
                 'title_suffix': '실시간 마켓 브리핑',
                 'time_str': f"{now_ny.strftime('%Y-%m-%d %H:%M')} ET (실시간 장중)",
-                'closing_word': '진행 중'
+                'closing_word': '진행 중',
+                'current_time_str': now_ny.strftime('%H:%M:%S ET')
             }
         else:
             return {
@@ -101,7 +122,8 @@ def get_market_status(market='KRX'):
                 'is_live': False,
                 'title_suffix': '마감 종합 리포트',
                 'time_str': f"{now_ny.strftime('%Y-%m-%d')} ET (정규장 마감)",
-                'closing_word': '마감'
+                'closing_word': '마감',
+                'current_time_str': now_ny.strftime('%H:%M:%S ET')
             }
 
 
@@ -126,7 +148,7 @@ def get_krx_summary():
     """
     result = {
         'market': 'KRX',
-        'date': date.today().strftime('%Y-%m-%d'),
+        'date': get_now_kst().strftime('%Y-%m-%d'),
         'kospi': {},
         'kosdaq': {},
         'exchange_rate': {},
@@ -251,7 +273,7 @@ def get_us_summary():
     """
     result = {
         'market': 'US',
-        'date': date.today().strftime('%Y-%m-%d'),
+        'date': get_now_ny().strftime('%Y-%m-%d'),
         'indices': {},
         'macro': {},
         'm7_stocks': [],

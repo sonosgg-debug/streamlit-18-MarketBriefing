@@ -65,7 +65,7 @@ with st.sidebar:
     if "KRX" in market_choice:
         st.markdown("### 🕒 **한국 증시(KRX) 운영 안내**")
         st.caption("• 정규 거래시간: 09:00 ~ 15:30 (KST)")
-        st.caption("• 현재 시각: " + datetime.now().strftime('%H:%M:%S'))
+        st.caption(f"• 현재 시각: {m_status.get('current_time_str', '')}")
         
         if m_status['is_live']:
             st.markdown(f"<div style='background: #064e3b; color: #a7f3d0; padding: 7px 14px; border-radius: 6px; font-weight: 700; font-size: 0.88rem; border: 1px solid #10b981;'>{m_status['label']}</div>", unsafe_allow_html=True)
@@ -74,7 +74,7 @@ with st.sidebar:
     else:
         st.markdown("### 🕒 **미국 증시(US) 운영 안내**")
         st.caption("• 정규 거래시간: 09:30 ~ 16:00 (ET)")
-        st.caption("• 한국시간 환산: 22:30 ~ 05:00 (서머타임 기준)")
+        st.caption(f"• 뉴욕 시각: {m_status.get('current_time_str', '')}")
         
         if m_status['is_live']:
             st.markdown(f"<div style='background: #064e3b; color: #a7f3d0; padding: 7px 14px; border-radius: 6px; font-weight: 700; font-size: 0.88rem; border: 1px solid #10b981;'>{m_status['label']}</div>", unsafe_allow_html=True)

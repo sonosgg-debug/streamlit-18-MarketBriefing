@@ -4,7 +4,8 @@ calendar_data.py
 실행 시점(현재 날짜)을 기준으로 다가오는 핵심 이벤트 D-Day 계산 및 큐레이션 제공
 """
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 # 주요 정례 일정 및 규칙 생성기
 def get_upcoming_events(market='KRX', max_items=5):
@@ -12,7 +13,13 @@ def get_upcoming_events(market='KRX', max_items=5):
     market: 'KRX' 또는 'US'
     max_items: 표시할 최대 이벤트 수
     """
-    today = date.today()
+    try:
+        tz = ZoneInfo('Asia/Seoul') if market == 'KRX' else ZoneInfo('America/New_York')
+        today = datetime.now(tz).date()
+    except Exception:
+        offset = 9 if market == 'KRX' else -4
+        today = datetime.now(timezone(timedelta(hours=offset))).date()
+
     events = []
 
     if market == 'KRX':
