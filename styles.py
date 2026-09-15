@@ -12,9 +12,11 @@ CUSTOM_CSS = """
     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
 }
 
-/* 상단 패딩 축소 및 너비 확보 */
+/* 상단 패딩 축소 및 너비 확보 (상단 툴바와 타이틀 간 쾌적한 여백 확보) */
+.main .block-container,
+[data-testid="stMainBlockContainer"],
 .block-container {
-    padding-top: 1.8rem;
+    padding-top: 3.5rem !important;
     padding-bottom: 2.5rem;
     padding-left: 2.5rem;
     padding-right: 2.5rem;
@@ -55,13 +57,19 @@ CUSTOM_CSS = """
     margin-bottom: 4px;
 }
 
-/* 상단 메인 타이틀 (00 Bookmarks 스타일 일치: #8AB4F8) */
+/* 상단 메인 타이틀 (00 Bookmarks 스타일 일치: #8AB4F8, 여백 및 줄간격 확보) */
 .main-title {
     color: #8AB4F8 !important;
     font-size: 1.85rem !important;
     font-weight: 800 !important;
     letter-spacing: -0.5px;
-    margin-bottom: 6px;
+    line-height: 1.4 !important;
+    padding-top: 6px !important;
+    padding-bottom: 2px !important;
+    margin-top: 0 !important;
+    margin-bottom: 6px !important;
+    display: block;
+    overflow: visible;
 }
 
 /* 섹션 타이틀 */
