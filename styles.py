@@ -20,7 +20,7 @@ CUSTOM_CSS = """
     padding-bottom: 2.5rem;
     padding-left: 2.5rem;
     padding-right: 2.5rem;
-    max-width: 1300px;
+    max-width: 100% !important;
 }
 
 /* 메트릭 카드 */
