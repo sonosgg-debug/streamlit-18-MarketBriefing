@@ -68,18 +68,18 @@ with st.sidebar:
         st.caption(f"• 현재 시각: {m_status.get('current_time_str', '')}")
         
         if m_status['is_live']:
-            st.markdown(f"<div style='background: #064e3b; color: #a7f3d0; padding: 7px 14px; border-radius: 6px; font-weight: 700; font-size: 0.88rem; border: 1px solid #10b981;'>{m_status['label']}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; background: #064e3b; color: #a7f3d0; padding: 7px 14px; border-radius: 6px; font-weight: 700; font-size: 0.88rem; border: 1px solid #10b981;'>{m_status['label']}</div>", unsafe_allow_html=True)
         else:
-            st.markdown(f"<div style='background: #1e293b; color: #cbd5e1; padding: 7px 14px; border-radius: 6px; font-weight: 600; font-size: 0.88rem; border: 1px solid #475569;'>{m_status['label']}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; background: #1e293b; color: #cbd5e1; padding: 7px 14px; border-radius: 6px; font-weight: 600; font-size: 0.88rem; border: 1px solid #475569;'>{m_status['label']}</div>", unsafe_allow_html=True)
     else:
         st.markdown("### 🕒 **미국 증시(US) 운영 안내**")
         st.caption("• 정규 거래시간: 09:30 ~ 16:00 (ET)")
         st.caption(f"• 뉴욕 시각: {m_status.get('current_time_str', '')}")
         
         if m_status['is_live']:
-            st.markdown(f"<div style='background: #064e3b; color: #a7f3d0; padding: 7px 14px; border-radius: 6px; font-weight: 700; font-size: 0.88rem; border: 1px solid #10b981;'>{m_status['label']}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; background: #064e3b; color: #a7f3d0; padding: 7px 14px; border-radius: 6px; font-weight: 700; font-size: 0.88rem; border: 1px solid #10b981;'>{m_status['label']}</div>", unsafe_allow_html=True)
         else:
-            st.markdown(f"<div style='background: #1e293b; color: #cbd5e1; padding: 7px 14px; border-radius: 6px; font-weight: 600; font-size: 0.88rem; border: 1px solid #475569;'>{m_status['label']}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; background: #1e293b; color: #cbd5e1; padding: 7px 14px; border-radius: 6px; font-weight: 600; font-size: 0.88rem; border: 1px solid #475569;'>{m_status['label']}</div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     
