@@ -182,16 +182,20 @@ if "KRX" in market_choice:
 
     with col_chart:
         st.markdown("<div class='section-header'>💰 투자 주체별 수급 동향 (KOSPI)</div>", unsafe_allow_html=True)
+        # 수급 바 차트 (개인: 옐로우/골드, 외국인: 퍼플/바이올렛, 기관: 에메랄드 그린으로 3색 명확 분리)
         p_val = inv_kp.get('personal', 0.0)
         f_val = inv_kp.get('foreign', 0.0)
         i_val = inv_kp.get('institutional', 0.0)
 
+        color_p = '#f59e0b' if p_val >= 0 else '#d97706'  # 개인: 골드/앰버
+        color_f = '#8b5cf6' if f_val >= 0 else '#6366f1'  # 외국인: 바이올렛/퍼플
+        color_i = '#10b981' if i_val >= 0 else '#059669'  # 기관: 에메랄드 그린
+
         fig_inv = go.Figure(go.Bar(
             x=['개인', '외국인', '기관'],
             y=[p_val, f_val, i_val],
-            marker_color=['#38bdf8' if p_val > 0 else '#64748b',
-                          '#f87171' if f_val > 0 else '#60a5fa',
-                          '#4ade80' if i_val > 0 else '#94a3b8'],
+            marker_color=[color_p, color_f, color_i],
+            marker_line=dict(width=1.5, color=['#fbbf24', '#a78bfa', '#34d399']),
             text=[f"{p_val:+,.0f}억", f"{f_val:+,.0f}억", f"{i_val:+,.0f}억"],
             textposition='auto',
             textfont=dict(color='#ffffff', size=13, family='Pretendard')
