@@ -1,7 +1,7 @@
 @echo off
-title Market Report Dashboard
+title Market Briefing Dashboard
 echo ====================================================
-echo   Market Report Dashboard - KRX and US
+echo   Market Briefing Dashboard - KRX and US
 echo ====================================================
 echo.
 echo [1/2] Checking required packages...

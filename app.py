@@ -272,7 +272,7 @@ if "KRX" in market_choice:
         st.download_button(
             label=btn_label,
             data=briefing['full_text'],
-            file_name=f"KRX_Market_Report_{data.get('date')}_{m_status['status']}.txt",
+            file_name=f"KRX_Market_Briefing_{data.get('date')}_{m_status['status']}.txt",
             mime="text/plain",
             use_container_width=True
         )
@@ -435,7 +435,7 @@ else:
         st.download_button(
             label=btn_label,
             data=briefing['full_text'],
-            file_name=f"US_Market_Report_{data.get('date')}_{m_status['status']}.txt",
+            file_name=f"US_Market_Briefing_{data.get('date')}_{m_status['status']}.txt",
             mime="text/plain",
             use_container_width=True
         )

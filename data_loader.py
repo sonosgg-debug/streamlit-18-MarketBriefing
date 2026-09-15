@@ -40,7 +40,7 @@ def get_market_status(market='KRX'):
                 'label': '🏖️ 주말 휴장 (직전 거래일 종가 기준)',
                 'badge': '⚪ 주말 휴장',
                 'is_live': False,
-                'title_suffix': '마감 종합 리포트',
+                'title_suffix': '마감 종합 브리핑',
                 'time_str': f"{now_kst.strftime('%Y-%m-%d')} (직전 정규장 마감)",
                 'closing_word': '마감',
                 'current_time_str': now_kst.strftime('%H:%M:%S KST')
@@ -78,7 +78,7 @@ def get_market_status(market='KRX'):
                 'label': '🏁 당일 정규장 마감 완료',
                 'badge': '✅ 정규장 마감',
                 'is_live': False,
-                'title_suffix': '마감 종합 리포트',
+                'title_suffix': '마감 종합 브리핑',
                 'time_str': f"{now_kst.strftime('%Y-%m-%d')} (정규장 마감)",
                 'closing_word': '마감',
                 'current_time_str': now_kst.strftime('%H:%M:%S KST')
@@ -93,7 +93,7 @@ def get_market_status(market='KRX'):
                 'label': '🏖️ 주말 휴장 (직전 뉴욕 종가 기준)',
                 'badge': '⚪ 뉴욕 휴장',
                 'is_live': False,
-                'title_suffix': '마감 종합 리포트',
+                'title_suffix': '마감 종합 브리핑',
                 'time_str': f"{now_ny.strftime('%Y-%m-%d')} ET (직전 거래일 마감)",
                 'closing_word': '마감',
                 'current_time_str': now_ny.strftime('%H:%M:%S ET')
@@ -120,7 +120,7 @@ def get_market_status(market='KRX'):
                 'label': '🏁 뉴욕 정규장 마감 완료',
                 'badge': '✅ 정규장 마감',
                 'is_live': False,
-                'title_suffix': '마감 종합 리포트',
+                'title_suffix': '마감 종합 브리핑',
                 'time_str': f"{now_ny.strftime('%Y-%m-%d')} ET (정규장 마감)",
                 'closing_word': '마감',
                 'current_time_str': now_ny.strftime('%H:%M:%S ET')
