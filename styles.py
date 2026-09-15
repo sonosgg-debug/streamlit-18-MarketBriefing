@@ -234,6 +234,32 @@ section[data-testid="stSidebar"] {
     border-right: 1px solid #1e293b;
 }
 
+/* 사이드바 시장 운영 상태 뱃지 (가운데 정렬 강제 보장) */
+.market-status-badge {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 8px 14px !important;
+    border-radius: 6px !important;
+    font-size: 0.88rem !important;
+    margin-bottom: 4px !important;
+}
+.market-status-live {
+    background: #064e3b !important;
+    color: #a7f3d0 !important;
+    font-weight: 700 !important;
+    border: 1px solid #10b981 !important;
+}
+.market-status-closed {
+    background: #1e293b !important;
+    color: #cbd5e1 !important;
+    font-weight: 600 !important;
+    border: 1px solid #475569 !important;
+}
+
 /* 버튼 스타일 */
 .stButton > button {
     border-radius: 8px;
