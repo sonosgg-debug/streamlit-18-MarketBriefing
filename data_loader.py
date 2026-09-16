@@ -11,6 +11,11 @@ import pandas as pd
 from datetime import datetime, date, timezone, timedelta
 from zoneinfo import ZoneInfo
 
+try:
+    import FinanceDataReader as fdr
+except ImportError:
+    fdr = None
+
 def get_now_kst():
     """한국 표준시(KST, UTC+9) 반환 (서버 OS 타임존 무관)"""
     try:
@@ -154,6 +159,17 @@ def get_krx_summary():
         'exchange_rate': {},
         'investors_kospi': {},
         'investors_kosdaq': {},
+        'program': {
+            'name': '프로그램 비차익 순매매',
+            'non_arbitrage': 0.0,
+            'arbitrage': 0.0,
+            'total': 0.0,
+            'bizdate': ''
+        },
+        'breadth': {
+            'kospi': {'up': 0, 'down': 0, 'flat': 0, 'total': 0, 'up_ratio': 0.0},
+            'kosdaq': {'up': 0, 'down': 0, 'flat': 0, 'total': 0, 'up_ratio': 0.0}
+        },
         'top_stocks': [],
         'history': pd.DataFrame()
     }
@@ -219,6 +235,36 @@ def get_krx_summary():
     except Exception as e:
         print(f"Error fetching KOSDAQ trend: {e}")
 
+    # 4-1. KOSPI 프로그램 매매 (특히 비차익 순매매)
+    try:
+        today_str = get_now_kst().strftime('%Y%m%d')
+        prog_params = {
+            'tradeType': 'KRX',
+            'krxMarketType': 'KOSPI',
+            'bizdate': today_str,
+            'startIdx': '1',
+            'pageSize': '1',
+            'periodType': 'DAY'
+        }
+        res_prog = requests.get('https://stock.naver.com/api/domestic/market/trendProgram', params=prog_params, headers=HEADERS, timeout=5)
+        if res_prog.status_code == 200:
+            content = res_prog.json().get('content', [])
+            if content:
+                latest = content[0]
+                # 원 단위를 억원 단위로 변환 (1억 = 100,000,000)
+                bi_diff = clean_float(latest.get('biDiffPureBuyAmt', 0)) / 100000000.0
+                diff = clean_float(latest.get('diffPureBuyAmt', 0)) / 100000000.0
+                tot_diff = clean_float(latest.get('totalDiffPureBuyAmt', 0)) / 100000000.0
+                result['program'] = {
+                    'name': '프로그램 비차익 순매매',
+                    'non_arbitrage': round(bi_diff, 0),
+                    'arbitrage': round(diff, 0),
+                    'total': round(tot_diff, 0),
+                    'bizdate': latest.get('bizdate', '')
+                }
+    except Exception as e:
+        print(f"Error fetching KOSPI program trading: {e}")
+
     # 5. 원/달러 환율 (yfinance)
     try:
         usdkrw = yf.Ticker('KRW=X')
@@ -264,7 +310,46 @@ def get_krx_summary():
     except Exception as e:
         pass
 
+    # 8. KOSPI & KOSDAQ 시장 등락 종목 수 (Market Breadth)
+    if fdr is not None:
+        try:
+            df_krx = fdr.StockListing('KRX')
+            if not df_krx.empty and 'Market' in df_krx.columns and 'Changes' in df_krx.columns:
+                kp_stocks = df_krx[df_krx['Market'] == 'KOSPI']
+                kd_stocks = df_krx[df_krx['Market'] == 'KOSDAQ']
+
+                if not kp_stocks.empty:
+                    kp_up = int((kp_stocks['Changes'] > 0).sum())
+                    kp_down = int((kp_stocks['Changes'] < 0).sum())
+                    kp_flat = int((kp_stocks['Changes'] == 0).sum())
+                    kp_tot = len(kp_stocks)
+                    kp_ratio = round((kp_up / (kp_up + kp_down) * 100) if (kp_up + kp_down) > 0 else 0.0, 1)
+                    result['breadth']['kospi'] = {
+                        'up': kp_up,
+                        'down': kp_down,
+                        'flat': kp_flat,
+                        'total': kp_tot,
+                        'up_ratio': kp_ratio
+                    }
+
+                if not kd_stocks.empty:
+                    kd_up = int((kd_stocks['Changes'] > 0).sum())
+                    kd_down = int((kd_stocks['Changes'] < 0).sum())
+                    kd_flat = int((kd_stocks['Changes'] == 0).sum())
+                    kd_tot = len(kd_stocks)
+                    kd_ratio = round((kd_up / (kd_up + kd_down) * 100) if (kd_up + kd_down) > 0 else 0.0, 1)
+                    result['breadth']['kosdaq'] = {
+                        'up': kd_up,
+                        'down': kd_down,
+                        'flat': kd_flat,
+                        'total': kd_tot,
+                        'up_ratio': kd_ratio
+                    }
+        except Exception as e:
+            print(f"Error fetching KRX market breadth: {e}")
+
     return result
+
 
 
 def get_us_summary():
@@ -281,9 +366,9 @@ def get_us_summary():
     }
 
     # 미국 핵심 티커 리스트
-    # ^GSPC: S&P500, ^IXIC: 나스닥, ^DJI: 다우존스, ^RUT: 러셀2000
+    # ^GSPC: S&P500, ^IXIC: 나스닥, ^SOX: 필라델피아 반도체, ^DJI: 다우존스, ^RUT: 러셀2000
     # ^VIX: 공포지수, ^TNX: 10년물 금리, CL=F: WTI유가, DX-Y.NYB: 달러인덱스
-    tickers = ['^GSPC', '^IXIC', '^DJI', '^RUT', '^VIX', '^TNX', 'CL=F', 'DX-Y.NYB']
+    tickers = ['^GSPC', '^IXIC', '^SOX', '^DJI', '^RUT', '^VIX', '^TNX', 'CL=F', 'DX-Y.NYB']
     m7_symbols = ['NVDA', 'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'META', 'TSLA']
 
     try:
@@ -293,6 +378,7 @@ def get_us_summary():
         name_map = {
             '^GSPC': 'S&P 500',
             '^IXIC': '나스닥 종합 (Nasdaq)',
+            '^SOX': '필라델피아 반도체 (SOX)',
             '^DJI': '다우존스 (Dow Jones)',
             '^RUT': '러셀 2000 (소형주)'
         }

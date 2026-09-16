@@ -323,6 +323,116 @@ section[data-testid="stSidebar"] {
         font-size: 1.35rem !important;
         font-weight: 700 !important;
     }
+
+    /* =========================================================
+       5열 메트릭 카드 및 슬림 인포 리본 바 스타일
+       ========================================================= */
+    /* Streamlit 메트릭 컴포넌트 폰트 및 여백 최적화 */
+    [data-testid="stMetric"] {
+        background-color: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 10px;
+        padding: 12px 14px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+        transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    [data-testid="stMetric"]:hover {
+        transform: translateY(-2px);
+        border-color: #475569;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 0.82rem !important;
+        font-weight: 600 !important;
+        color: #94a3b8 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.35rem !important;
+        font-weight: 700 !important;
+        color: #f8fafc !important;
+        line-height: 1.25 !important;
+    }
+    [data-testid="stMetricDelta"] {
+        font-size: 0.80rem !important;
+        font-weight: 600 !important;
+    }
+
+    /* 슬림 인포 리본 바 */
+    .info-ribbon-container {
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 10px;
+        padding: 10px 18px;
+        margin-top: 4px;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
+    }
+    .info-ribbon-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: #cbd5e1;
+        white-space: nowrap;
+    }
+    .info-ribbon-content {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+    }
+    .info-ribbon-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.84rem;
+    }
+    .info-group-label {
+        color: #94a3b8;
+        font-weight: 600;
+    }
+    .breadth-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+    }
+    .chip-up {
+        background: rgba(239, 68, 68, 0.15);
+        color: #fca5a5;
+        border: 1px solid rgba(239, 68, 68, 0.35);
+    }
+    .chip-flat {
+        background: rgba(148, 163, 184, 0.15);
+        color: #cbd5e1;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+    }
+    .chip-down {
+        background: rgba(59, 130, 246, 0.15);
+        color: #93c5fd;
+        border: 1px solid rgba(59, 130, 246, 0.35);
+    }
+    .chip-neutral {
+        background: rgba(51, 65, 85, 0.4);
+        color: #e2e8f0;
+        border: 1px solid #475569;
+    }
+    .ribbon-divider {
+        color: #334155;
+        font-weight: 300;
+        margin: 0 2px;
+    }
     
     /* 호버(PC) 및 터치 시 반전 효과 */
     [data-testid="stSidebarCollapseButton"] button:hover {

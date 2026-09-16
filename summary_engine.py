@@ -30,6 +30,13 @@ def generate_krx_briefing(krx_data, is_live=False, time_str=""):
     kp_inst = inv_kp.get('institutional', 0.0)
     kp_indiv = inv_kp.get('personal', 0.0)
 
+    program = krx_data.get('program', {})
+    prog_non_arb = program.get('non_arbitrage', 0.0)
+
+    breadth = krx_data.get('breadth', {})
+    kp_breadth = breadth.get('kospi', {})
+    kd_breadth = breadth.get('kosdaq', {})
+
     # 1. 시장 분위기 판정 (Market Tone)
     action_verb = "흐름을 보이고 있습니다" if is_live else "마감했습니다"
     state_suffix = "전개 중" if is_live else "마감"
@@ -47,14 +54,15 @@ def generate_krx_briefing(krx_data, is_live=False, time_str=""):
 
     # 수급 코멘트 판정
     verb_flow = "나타내고 있습니다" if is_live else "나타냈습니다"
+    prog_word = f"프로그램 비차익 매매는 {prog_non_arb:+,.0f}억원 규모의 {'순매수 유입' if prog_non_arb >= 0 else '순매도 출회'}"
     if kp_foreign < 0 and kp_inst < 0:
-        flow_comment = f"외국인(-{abs(kp_foreign):,.0f}억)과 기관(-{abs(kp_inst):,.0f}억)의 동반 순매도 속에 개인이 홀로 물량을 받아내는 양상"
+        flow_comment = f"외국인(-{abs(kp_foreign):,.0f}억)과 기관(-{abs(kp_inst):,.0f}억)의 동반 순매도 속에 개인이 홀로 물량을 받아내는 양상이며, {prog_word}"
     elif kp_foreign > 0 and kp_inst > 0:
-        flow_comment = f"외국인(+{kp_foreign:,.0f}억)과 기관(+{kp_inst:,.0f}억)의 '쌍끌이' 순매수세가 지수 반등을 견인"
+        flow_comment = f"외국인(+{kp_foreign:,.0f}억)과 기관(+{kp_inst:,.0f}억)의 '쌍끌이' 순매수세가 지수 반등을 견인하고 있으며, {prog_word}"
     elif kp_foreign > 0 and kp_inst <= 0:
-        flow_comment = f"외국인의 순매수(+{kp_foreign:,.0f}억) 유입에도 기관 매도세로 지수 상단이 제한되는 흐름"
+        flow_comment = f"외국인의 순매수(+{kp_foreign:,.0f}억) 유입에도 기관 매도세로 지수 상단이 제한되는 흐름 속에 {prog_word}"
     else:
-        flow_comment = f"기관의 방어적 매수에도 외국인 순매도(-{abs(kp_foreign):,.0f}억)가 이어지며 수급 공방"
+        flow_comment = f"기관의 방어적 매수에도 외국인 순매도(-{abs(kp_foreign):,.0f}억)가 이어지며 수급 공방 속에 {prog_word}"
 
     # 시총 상위주 동향
     up_stocks = [s['name'] for s in top_stocks if s.get('ratio', 0) > 0]
@@ -69,9 +77,14 @@ def generate_krx_briefing(krx_data, is_live=False, time_str=""):
     elif down_stocks:
         stock_trend = f"{', '.join(down_stocks[:3])} 등 주요 대형주들이 동반 약세를 기록"
 
+    # 체감 등락 코멘트
+    breadth_comment = ""
+    if kp_breadth.get('total', 0) > 0:
+        breadth_comment = f" (코스피 상승 {kp_breadth.get('up')}종목 vs 하락 {kp_breadth.get('down')}종목으로 체감 장세 {'우세' if kp_breadth.get('up', 0) > kp_breadth.get('down', 0) else '둔화'})"
+
     # 1분 핵심 총평 (3 Bullets)
     bullets = [
-        f"**지수 동향**: 코스피는 {kp_tone} ({kp_price:,.2f}pt, {kp_ratio:+.2f}%), 코스닥은 {kd_price:,.2f}pt({kd_ratio:+.2f}%)를 기록.",
+        f"**지수 동향**: 코스피는 {kp_tone} ({kp_price:,.2f}pt, {kp_ratio:+.2f}%), 코스닥은 {kd_price:,.2f}pt({kd_ratio:+.2f}%)를 기록{breadth_comment}.",
         f"**수급 핵심**: 유가증권시장에서 {flow_comment}.",
         f"**거시/환율**: 원/달러 환율은 {fx_price:,.2f}원({fx_change:+.2f}원)선에서 등락하며 글로벌 금리 및 대외 변수를 반영."
     ]
@@ -82,9 +95,10 @@ def generate_krx_briefing(krx_data, is_live=False, time_str=""):
 **[{title_brief_sec}]**
 오늘 국내 증시는 코스피가 {kp_price:,.2f}pt({kp_ratio:+.2f}%), 코스닥이 {kd_price:,.2f}pt({kd_ratio:+.2f}%) 수준에서 {action_verb}. 
 장 초반 글로벌 매크로 지표 관망 심리와 주요 이벤트를 앞두고 관망세가 짙었으나, {('코스닥 성장주 중심의 저가 매수세가 유입되며 시장 전반에 방어력이 형성' if kd_ratio > 0 else '대형주 전반에 매물이 출회되며 숨고르기 양상')}되고 있습니다.
+코스피 시장의 등락 분포는 상승 {kp_breadth.get('up', 0)}개, 하락 {kp_breadth.get('down', 0)}개(상승 비율 {kp_breadth.get('up_ratio', 0.0)}%), 코스닥은 상승 {kd_breadth.get('up', 0)}개, 하락 {kd_breadth.get('down', 0)}개(상승 비율 {kd_breadth.get('up_ratio', 0.0)}%)를 나타내고 있습니다.
 
 **[투자 주체별 수급 & 자금 동향]**
-코스피 시장에서는 {flow_comment}을 {verb_flow}. 코스닥 시장에서는 개인 {inv_kd.get('personal', 0):+,.0f}억, 외국인 {inv_kd.get('foreign', 0):+,.0f}억, 기관 {inv_kd.get('institutional', 0):+,.0f}억 원의 포지션을 취하고 있습니다. 
+코스피 시장에서는 {flow_comment}을 {verb_flow}. 기관과 외국인의 알고리즘 패시브 매매 척도인 비차익 순매매는 {prog_non_arb:+,.0f}억 원으로 집계되었습니다. 코스닥 시장에서는 개인 {inv_kd.get('personal', 0):+,.0f}억, 외국인 {inv_kd.get('foreign', 0):+,.0f}억, 기관 {inv_kd.get('institutional', 0):+,.0f}억 원의 포지션을 취하고 있습니다. 
 특히 외국인의 현·선물 포지션 변화와 환율 변동성({fx_price:,.1f}원)이 지수 방향성에 결정적인 변수로 작용하고 있습니다.
 
 **[주요 섹터 및 대형주 동향]**
@@ -94,7 +108,7 @@ def generate_krx_briefing(krx_data, is_live=False, time_str=""):
     # 체크포인트 3선
     chk_title = "오후 장 및 마감 관전 포인트" if is_live else "내일의 핵심 투자 체크포인트"
     checkpoints = [
-        f"원/달러 환율 {fx_price:,.1f}원선 안착 여부 및 외국인의 현·선물 순매수 복귀 시점 확인",
+        f"원/달러 환율 {fx_price:,.1f}원선 안착 여부 및 외국인의 현·선물 및 프로그램 비차익 순매수 복귀 시점 확인",
         "미국 야간 증시에서의 필라델피아 반도체 지수 및 빅테크(M7) 주가 변동성 체크",
         "다가오는 주요 경제 이벤트(금통위 및 글로벌 중앙은행 통화정책)를 앞둔 차익실현 매물 소화 과정 주시"
     ]
@@ -103,15 +117,16 @@ def generate_krx_briefing(krx_data, is_live=False, time_str=""):
     full_report_text = f"""[한국 증시(KRX) {report_type_kr}]
 📅 기준: {time_str if time_str else krx_data.get('date')}
 
-■ 주요 지수 현황
-- 코스피(KOSPI): {kp_price:,.2f}pt ({kp_ratio:+.2f}%)
-- 코스닥(KOSDAQ): {kd_price:,.2f}pt ({kd_ratio:+.2f}%)
+■ 주요 지수 및 등락 현황
+- 코스피(KOSPI): {kp_price:,.2f}pt ({kp_ratio:+.2f}%) [상승: {kp_breadth.get('up', 0)}, 하락: {kp_breadth.get('down', 0)}, 보합: {kp_breadth.get('flat', 0)}]
+- 코스닥(KOSDAQ): {kd_price:,.2f}pt ({kd_ratio:+.2f}%) [상승: {kd_breadth.get('up', 0)}, 하락: {kd_breadth.get('down', 0)}, 보합: {kd_breadth.get('flat', 0)}]
 - 원/달러 환율: {fx_price:,.2f}원 ({fx_change:+.2f}원)
 
-■ 투자자별 수급 (코스피)
+■ 투자자별 및 프로그램 수급 (코스피)
 - 개인: {kp_indiv:+,.0f}억원
 - 외국인: {kp_foreign:+,.0f}억원
 - 기관: {kp_inst:+,.0f}억원
+- 프로그램 비차익: {prog_non_arb:+,.0f}억원
 
 ■ 핵심 3줄 요약
 1. {bullets[0].replace('**', '')}
@@ -146,6 +161,7 @@ def generate_us_briefing(us_data, is_live=False, time_str=""):
 
     sp500 = indices.get('^GSPC', {'price': 0.0, 'change': 0.0, 'ratio': 0.0})
     nasdaq = indices.get('^IXIC', {'price': 0.0, 'change': 0.0, 'ratio': 0.0})
+    sox = indices.get('^SOX', {'price': 0.0, 'change': 0.0, 'ratio': 0.0})
     dow = indices.get('^DJI', {'price': 0.0, 'change': 0.0, 'ratio': 0.0})
     rut = indices.get('^RUT', {'price': 0.0, 'change': 0.0, 'ratio': 0.0})
 
@@ -156,6 +172,7 @@ def generate_us_briefing(us_data, is_live=False, time_str=""):
 
     sp_ratio = sp500.get('ratio', 0.0)
     nasdaq_ratio = nasdaq.get('ratio', 0.0)
+    sox_ratio = sox.get('ratio', 0.0)
     
     state_suffix = "전개 중" if is_live else "마감"
     action_verb = "등락을 보이고 있습니다" if is_live else "마감했습니다"
@@ -181,17 +198,19 @@ def generate_us_briefing(us_data, is_live=False, time_str=""):
     elif m7_down:
         m7_summary = f"{', '.join(m7_down[:3])} 등 주요 빅테크 종목들이 일제히 약세를 보이며 지수에 부담"
 
+    sox_comment = f" / 필라델피아 반도체 {sox.get('price', 0):,.2f}pt({sox_ratio:+.2f}%)" if sox.get('price', 0) > 0 else ""
+
     bullets = [
-        f"**지수 동향**: 뉴욕 증시는 {us_tone} (S&P500 {sp500.get('price'):,.2f}, {sp_ratio:+.2f}% / 나스닥 {nasdaq.get('price'):,.2f}, {nasdaq_ratio:+.2f}% / 다우 {dow.get('ratio', 0):+.2f}%).",
+        f"**지수 동향**: 뉴욕 증시는 {us_tone} (S&P500 {sp500.get('price'):,.2f}, {sp_ratio:+.2f}% / 나스닥 {nasdaq.get('price'):,.2f}, {nasdaq_ratio:+.2f}%{sox_comment}).",
         f"**빅테크(M7) 흐름**: {m7_summary if m7_summary else 'AI 반도체 및 빅테크 종목 간 실적 기대감과 차익 실현 욕구가 교차'}.",
         f"**매크로 & 채권**: 미 국채 10년물 금리는 {tnx.get('price', 0):.2f}%({tnx.get('change', 0):+.2f}%p), VIX 변동성 지수는 {vix.get('price', 0):.2f}pt 수준 기록."
     ]
 
-    title_sec = "뉴욕 장중 지수 흐름" if is_live else "뉴욕 3대 지수 흐름 & 총평"
+    title_sec = "뉴욕 장중 지수 흐름" if is_live else "뉴욕 주요 지수 흐름 & 총평"
     detailed_brief = f"""
 **[{title_sec}]**
 미국 증시는 S&P 500({sp500.get('price'):,.2f}, {sp_ratio:+.2f}%), 나스닥({nasdaq.get('price'):,.2f}, {nasdaq_ratio:+.2f}%), 다우존스({dow.get('price'):,.2f}, {dow.get('ratio', 0):+.2f}%)로 {action_verb}. 
-중소형주 중심의 러셀 2000 지수는 {rut.get('ratio', 0):+.2f}%를 기록하며 대형주 대비 상대 강도를 보여주었습니다.
+글로벌 기술주 바로미터인 필라델피아 반도체 지수(SOX)는 {sox.get('price', 0):,.2f}pt({sox_ratio:+.2f}%)를 기록하며 반도체 하드웨어 업황에 대한 투자 심리를 반영했습니다. 중소형주 중심의 러셀 2000 지수는 {rut.get('ratio', 0):+.2f}%로 마감했습니다.
 
 **[매크로 지표 & 금리 환경]**
 미 국채 10년물 금리가 {tnx.get('price', 0):.2f}%선에서 등락하며 연준의 통화정책 경로를 가늠하고 있습니다. 
@@ -206,18 +225,20 @@ def generate_us_briefing(us_data, is_live=False, time_str=""):
     checkpoints = [
         f"미 연준 주요 인사들의 발언 및 다가오는 인플레이션/고용 지표 발표 영향 점검",
         f"10년물 국채 금리({tnx.get('price', 0):.2f}%)의 추가 하향 안정 여부와 성장주 밸류에이션 탄력성",
-        "AI 인프라 투자 지속 가능성 및 엔비디아/애플 등 핵심 대형주 지지선 테스트"
+        f"필라델피아 반도체 지수({sox.get('price', 0):,.2f}pt) 및 엔비디아/애플 등 핵심 대형주 지지선 테스트"
     ]
 
     report_type_us = "실시간 장중 브리핑" if is_live else "마감 데일리 브리핑"
     full_report_text = f"""[미국 증시(US) {report_type_us}]
 📅 기준: {time_str if time_str else us_data.get('date')}
 
-■ 3대 주요 지수 현황
+■ 주요 지수 현황
 - S&P 500: {sp500.get('price'):,.2f}pt ({sp_ratio:+.2f}%)
 - 나스닥(Nasdaq): {nasdaq.get('price'):,.2f}pt ({nasdaq_ratio:+.2f}%)
+- 필라델피아 반도체(SOX): {sox.get('price', 0):,.2f}pt ({sox_ratio:+.2f}%)
 - 다우존스(Dow): {dow.get('price'):,.2f}pt ({dow.get('ratio', 0):+.2f}%)
 - 러셀 2000: {rut.get('price'):,.2f}pt ({rut.get('ratio', 0):+.2f}%)
+
 
 ■ 주요 거시 매크로 지표
 - 미 국채 10년물 금리: {tnx.get('price', 0):.2f}%

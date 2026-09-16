@@ -119,13 +119,14 @@ if "KRX" in market_choice:
 
     st.markdown("---")
 
-    # 1. 상단 주요 지표 카드 (KPI)
-    k1, k2, k3, k4 = st.columns(4)
+    # 1. 상단 주요 지표 카드 (KPI - 5개 패널 확장)
+    k1, k2, k3, k4, k5 = st.columns(5)
     
     kospi = data.get('kospi', {})
     kosdaq = data.get('kosdaq', {})
     fx = data.get('exchange_rate', {})
     inv_kp = data.get('investors_kospi', {})
+    prog = data.get('program', {})
 
     with k1:
         ratio = kospi.get('ratio', 0.0)
@@ -154,11 +155,59 @@ if "KRX" in market_choice:
         st.metric(
             label="코스피 외국인 순매매",
             value=f"{for_val:+,.0f} 억원",
-            delta="순매수 유입" if for_val > 0 else "순매도 출회",
-            delta_color="normal" if for_val > 0 else "inverse"
+            delta="순매수 유입" if for_val > 0 else ("순매도 출회" if for_val < 0 else "보합"),
+            delta_color="normal" if for_val > 0 else ("inverse" if for_val < 0 else "off")
+        )
+    with k5:
+        non_arb = prog.get('non_arbitrage', 0.0)
+        st.metric(
+            label="프로그램 비차익 순매매",
+            value=f"{non_arb:+,.0f} 억원",
+            delta="순매수 유입" if non_arb > 0 else ("순매도 출회" if non_arb < 0 else "보합"),
+            delta_color="normal" if non_arb > 0 else ("inverse" if non_arb < 0 else "off")
         )
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    # 1-1. 시장 등락 종목 수 슬림 인포 리본 바 (Option 1)
+    breadth = data.get('breadth', {})
+    kp_b = breadth.get('kospi', {})
+    kd_b = breadth.get('kosdaq', {})
+
+    kp_up = kp_b.get('up', 0)
+    kp_down = kp_b.get('down', 0)
+    kp_flat = kp_b.get('flat', 0)
+    kp_ratio = kp_b.get('up_ratio', 0.0)
+
+    kd_up = kd_b.get('up', 0)
+    kd_down = kd_b.get('down', 0)
+    kd_flat = kd_b.get('flat', 0)
+    kd_ratio = kd_b.get('up_ratio', 0.0)
+
+    ribbon_html = f"""
+    <div class='info-ribbon-container'>
+        <div class='info-ribbon-title'>
+            <span>📊 <b>시장 등락 종목 수 (Market Breadth)</b></span>
+        </div>
+        <div class='info-ribbon-content'>
+            <div class='info-ribbon-group'>
+                <span class='info-group-label'>코스피:</span>
+                <span class='breadth-chip chip-up'>🔴 상승 {kp_up:,}</span>
+                <span class='breadth-chip chip-flat'>⚪ 보합 {kp_flat:,}</span>
+                <span class='breadth-chip chip-down'>🔵 하락 {kp_down:,}</span>
+                <span class='breadth-chip chip-neutral'>상승비율 {kp_ratio:.1f}%</span>
+            </div>
+            <span class='ribbon-divider'>|</span>
+            <div class='info-ribbon-group'>
+                <span class='info-group-label'>코스닥:</span>
+                <span class='breadth-chip chip-up'>🔴 상승 {kd_up:,}</span>
+                <span class='breadth-chip chip-flat'>⚪ 보합 {kd_flat:,}</span>
+                <span class='breadth-chip chip-down'>🔵 하락 {kd_down:,}</span>
+                <span class='breadth-chip chip-neutral'>상승비율 {kd_ratio:.1f}%</span>
+            </div>
+        </div>
+    </div>
+    """
+    st.markdown(ribbon_html, unsafe_allow_html=True)
+
 
     # 2. 오늘의 시장 요약 (핵심 3선 + 심층 브리핑)
     section_summary_title = "📌 현재 장중 시장 상황 요약" if m_status['is_live'] else "📌 오늘의 시장 마감 요약"
@@ -305,10 +354,11 @@ else:
 
     st.markdown("---")
 
-    # 1. 상단 주요 지표 카드 (KPI)
-    u1, u2, u3, u4 = st.columns(4)
+    # 1. 상단 주요 지표 카드 (KPI - 5개 패널 확장)
+    u1, u2, u3, u4, u5 = st.columns(5)
     sp500 = indices.get('^GSPC', {})
     nasdaq = indices.get('^IXIC', {})
+    sox = indices.get('^SOX', {})
     macro = data.get('macro', {})
     tnx = macro.get('^TNX', {})
     vix = macro.get('^VIX', {})
@@ -327,12 +377,18 @@ else:
         )
     with u3:
         st.metric(
+            label="필라델피아 반도체 (SOX) " + ("(실시간)" if m_status['is_live'] else "(종가)"),
+            value=f"{sox.get('price', 0.0):,.2f}",
+            delta=f"{sox.get('change', 0.0):+,.2f} ({sox.get('ratio', 0.0):+.2f}%)"
+        )
+    with u4:
+        st.metric(
             label="미 국채 10년물 금리",
             value=f"{tnx.get('price', 0.0):.2f}%",
             delta=f"{tnx.get('change', 0.0):+,.2f}%p",
             delta_color="inverse"
         )
-    with u4:
+    with u5:
         st.metric(
             label="변동성 지수 (VIX)",
             value=f"{vix.get('price', 0.0):.2f} pt",
@@ -340,7 +396,52 @@ else:
             delta_color="inverse"
         )
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    # 1-1. 글로벌 거시 & 주요 지수 슬림 인포 리본 바 (대칭 컴포넌트)
+    dow = indices.get('^DJI', {})
+    rut = indices.get('^RUT', {})
+    oil = macro.get('CL=F', {})
+    dxy = macro.get('DX-Y.NYB', {})
+
+    dow_ratio = dow.get('ratio', 0.0)
+    rut_ratio = rut.get('ratio', 0.0)
+    oil_price = oil.get('price', 0.0)
+    oil_ratio = oil.get('ratio', 0.0)
+    dxy_price = dxy.get('price', 0.0)
+    dxy_ratio = dxy.get('ratio', 0.0)
+
+    dow_chip_cls = 'chip-up' if dow_ratio > 0 else ('chip-down' if dow_ratio < 0 else 'chip-flat')
+    rut_chip_cls = 'chip-up' if rut_ratio > 0 else ('chip-down' if rut_ratio < 0 else 'chip-flat')
+    oil_chip_cls = 'chip-up' if oil_ratio > 0 else ('chip-down' if oil_ratio < 0 else 'chip-flat')
+    dxy_chip_cls = 'chip-up' if dxy_ratio > 0 else ('chip-down' if dxy_ratio < 0 else 'chip-flat')
+
+    us_ribbon_html = f"""
+    <div class='info-ribbon-container'>
+        <div class='info-ribbon-title'>
+            <span>🌐 <b>뉴욕 보조 지표 및 거시 지표 요약</b></span>
+        </div>
+        <div class='info-ribbon-content'>
+            <div class='info-ribbon-group'>
+                <span class='info-group-label'>다우존스:</span>
+                <span class='breadth-chip {dow_chip_cls}'>{dow.get('price', 0.0):,.2f} ({dow_ratio:+.2f}%)</span>
+            </div>
+            <div class='info-ribbon-group'>
+                <span class='info-group-label'>러셀 2000(소형주):</span>
+                <span class='breadth-chip {rut_chip_cls}'>{rut.get('price', 0.0):,.2f} ({rut_ratio:+.2f}%)</span>
+            </div>
+            <span class='ribbon-divider'>|</span>
+            <div class='info-ribbon-group'>
+                <span class='info-group-label'>WTI 유가:</span>
+                <span class='breadth-chip {oil_chip_cls}'>${oil_price:.2f} ({oil_ratio:+.2f}%)</span>
+            </div>
+            <div class='info-ribbon-group'>
+                <span class='info-group-label'>달러 인덱스:</span>
+                <span class='breadth-chip {dxy_chip_cls}'>{dxy_price:.2f}pt ({dxy_ratio:+.2f}%)</span>
+            </div>
+        </div>
+    </div>
+    """
+    st.markdown(us_ribbon_html, unsafe_allow_html=True)
+
 
     # 2. 오늘의 시장 요약 (핵심 3선 + 심층 브리핑)
     section_summary_title = "📌 현재 장중 시장 상황 요약" if m_status['is_live'] else "📌 오늘의 시장 마감 요약"
