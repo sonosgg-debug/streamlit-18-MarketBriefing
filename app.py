@@ -157,7 +157,7 @@ if "KRX" in market_choice:
         else:
             inv_prev = data.get('investors_kospi_prev', {})
             prev_fmt = inv_prev.get('bizdate_fmt') or (inv_prev.get('date')[3:] if len(inv_prev.get('date', '')) >= 5 else '')
-            badge = f"(종가: {prev_fmt})" if prev_fmt else "(종가)"
+            badge = f"(마감: {prev_fmt})" if prev_fmt else "(마감)"
             kp_for_label = f"코스피 외국인 순매매 {badge}"
             for_val = inv_prev.get('foreign', inv_kp.get('foreign', 0.0))
 
