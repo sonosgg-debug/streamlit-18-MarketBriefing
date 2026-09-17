@@ -5,6 +5,7 @@ data_loader.py
 - yfinance (미국 지수, 글로벌 거시 지표, 환율, 과거 추이 차트용 데이터)
 """
 
+import io
 import requests
 import yfinance as yf
 import pandas as pd
@@ -147,6 +148,67 @@ def clean_float(val):
     except:
         return 0.0
 
+def get_investor_trend_history(sosok='01'):
+    """
+    네이버 금융 일자별 투자자 매매동향(최근 5~10일) 및 전일 마감 확정 수치 반환
+    sosok: '01' (KOSPI), '02' (KOSDAQ)
+    """
+    try:
+        now_kst = get_now_kst()
+        today_str = now_kst.strftime('%Y%m%d')
+        url = f'https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate={today_str}&sosok={sosok}'
+        r = requests.get(url, headers=HEADERS, timeout=5)
+        if r.status_code == 200:
+            dfs = pd.read_html(io.StringIO(r.content.decode('cp949', errors='replace')))
+            if dfs and not dfs[0].empty:
+                df = dfs[0].dropna(how='all').copy()
+                std_cols = ['날짜', '개인', '외국인', '기관계', '금융투자', '보험', '투신', '은행', '기타금융', '연기금', '기타법인']
+                if len(df.columns) == len(std_cols):
+                    df.columns = std_cols
+                else:
+                    df.columns = [c[1] if isinstance(c, tuple) and c[1] else c[0] if isinstance(c, tuple) else str(c) for c in df.columns]
+                
+                df = df[df['날짜'].astype(str).str.match(r'^\d{2}\.\d{2}\.\d{2}$')].reset_index(drop=True)
+                for col in df.columns[1:]:
+                    df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '').str.replace('+', ''), errors='coerce').fillna(0.0)
+                
+                # 전일(직전 거래일) 마감 행 추출
+                today_short = now_kst.strftime('%y.%m.%d')
+                first_date = str(df.iloc[0]['날짜']).strip() if len(df) > 0 else ''
+                
+                # 첫 번째 행이 오늘 날짜(장중 잠정)이면 두 번째 행이 전일 마감, 아니면 첫 번째 행이 직전 마감
+                if first_date == today_short and len(df) > 1:
+                    prev_row = df.iloc[1]
+                elif len(df) > 0:
+                    prev_row = df.iloc[0]
+                else:
+                    prev_row = pd.Series()
+                
+                prev_data = {}
+                if not prev_row.empty:
+                    prev_data = {
+                        'date': str(prev_row.get('날짜', '')),
+                        'personal': float(prev_row.get('개인', 0.0)),
+                        'foreign': float(prev_row.get('외국인', 0.0)),
+                        'institutional': float(prev_row.get('기관계', 0.0)),
+                        'financial_invest': float(prev_row.get('금융투자', 0.0)),
+                        'insurance': float(prev_row.get('보험', 0.0)),
+                        'investment_trust': float(prev_row.get('투신', 0.0)),
+                        'bank': float(prev_row.get('은행', 0.0)),
+                        'other_finance': float(prev_row.get('기타금융', 0.0)),
+                        'pension': float(prev_row.get('연기금', 0.0)),
+                        'other_corp': float(prev_row.get('기타법인', 0.0))
+                    }
+                
+                return {
+                    'prev': prev_data,
+                    'history': df.head(6)
+                }
+    except Exception as e:
+        print(f"Error fetching investor trend history (sosok={sosok}): {e}")
+    
+    return {'prev': {}, 'history': pd.DataFrame()}
+
 def get_krx_summary():
     """
     한국 시장(KRX) 마감 종합 데이터 반환
@@ -159,12 +221,17 @@ def get_krx_summary():
         'exchange_rate': {},
         'investors_kospi': {},
         'investors_kosdaq': {},
+        'investors_kospi_prev': {},
+        'investors_history_kospi': pd.DataFrame(),
         'program': {
             'name': '프로그램 비차익 순매매',
             'non_arbitrage': 0.0,
             'arbitrage': 0.0,
             'total': 0.0,
-            'bizdate': ''
+            'bizdate': '',
+            'bizdate_fmt': '',
+            'time_str': '',
+            'is_live': False
         },
         'breadth': {
             'kospi': {'up': 0, 'down': 0, 'flat': 0, 'total': 0, 'up_ratio': 0.0},
@@ -221,6 +288,14 @@ def get_krx_summary():
     except Exception as e:
         print(f"Error fetching KOSPI trend: {e}")
 
+    # 3-1. KOSPI 전일 마감 수급 및 최근 일자별 추이
+    try:
+        hist_kospi = get_investor_trend_history('01')
+        result['investors_kospi_prev'] = hist_kospi.get('prev', {})
+        result['investors_history_kospi'] = hist_kospi.get('history', pd.DataFrame())
+    except Exception as e:
+        print(f"Error attaching KOSPI history: {e}")
+
     # 4. KOSDAQ 투자자별 수급
     try:
         res = requests.get('https://m.stock.naver.com/api/index/KOSDAQ/trend', headers=HEADERS, timeout=5)
@@ -237,31 +312,57 @@ def get_krx_summary():
 
     # 4-1. KOSPI 프로그램 매매 (특히 비차익 순매매)
     try:
-        today_str = get_now_kst().strftime('%Y%m%d')
-        prog_params = {
-            'tradeType': 'KRX',
-            'krxMarketType': 'KOSPI',
-            'bizdate': today_str,
-            'startIdx': '1',
-            'pageSize': '1',
-            'periodType': 'DAY'
-        }
-        res_prog = requests.get('https://stock.naver.com/api/domestic/market/trendProgram', params=prog_params, headers=HEADERS, timeout=5)
+        now_kst = get_now_kst()
+        today_str = now_kst.strftime('%Y%m%d')
+        
+        # 1) 실시간 장중(TIME) 데이터 우선 호출
+        res_prog = requests.get(
+            'https://stock.naver.com/api/domestic/market/trendProgram',
+            params={'tradeType': 'KRX', 'krxMarketType': 'KOSPI', 'bizdate': today_str, 'startIdx': '1', 'pageSize': '1', 'periodType': 'TIME'},
+            headers=HEADERS,
+            timeout=5
+        )
+        content = []
+        is_time_type = False
         if res_prog.status_code == 200:
             content = res_prog.json().get('content', [])
             if content:
-                latest = content[0]
-                # 원 단위를 억원 단위로 변환 (1억 = 100,000,000)
-                bi_diff = clean_float(latest.get('biDiffPureBuyAmt', 0)) / 100000000.0
-                diff = clean_float(latest.get('diffPureBuyAmt', 0)) / 100000000.0
-                tot_diff = clean_float(latest.get('totalDiffPureBuyAmt', 0)) / 100000000.0
-                result['program'] = {
-                    'name': '프로그램 비차익 순매매',
-                    'non_arbitrage': round(bi_diff, 0),
-                    'arbitrage': round(diff, 0),
-                    'total': round(tot_diff, 0),
-                    'bizdate': latest.get('bizdate', '')
-                }
+                is_time_type = True
+
+        # 2) TIME 데이터가 없으면 일자별(DAY) 데이터 폴백
+        if not content:
+            res_prog = requests.get(
+                'https://stock.naver.com/api/domestic/market/trendProgram',
+                params={'tradeType': 'KRX', 'krxMarketType': 'KOSPI', 'bizdate': today_str, 'startIdx': '1', 'pageSize': '1', 'periodType': 'DAY'},
+                headers=HEADERS,
+                timeout=5
+            )
+            if res_prog.status_code == 200:
+                content = res_prog.json().get('content', [])
+
+        if content:
+            latest = content[0]
+            bi_diff = clean_float(latest.get('biDiffPureBuyAmt', 0)) / 100000000.0
+            diff = clean_float(latest.get('diffPureBuyAmt', 0)) / 100000000.0
+            tot_diff = clean_float(latest.get('totalDiffPureBuyAmt', 0)) / 100000000.0
+            b_date = str(latest.get('bizdate', ''))
+            t_val = str(latest.get('time', ''))
+            time_fmt = f"{t_val[:2]}:{t_val[2:4]}" if len(t_val) >= 4 else ""
+            date_fmt = f"{b_date[4:6]}/{b_date[6:8]}" if len(b_date) == 8 else b_date
+
+            cur_m_status = get_market_status('KRX')
+            is_live_prog = bool(is_time_type and b_date == today_str and cur_m_status.get('is_live', False))
+
+            result['program'] = {
+                'name': '프로그램 비차익 순매매',
+                'non_arbitrage': round(bi_diff, 0),
+                'arbitrage': round(diff, 0),
+                'total': round(tot_diff, 0),
+                'bizdate': b_date,
+                'bizdate_fmt': date_fmt,
+                'time_str': time_fmt,
+                'is_live': is_live_prog
+            }
     except Exception as e:
         print(f"Error fetching KOSPI program trading: {e}")
 

@@ -152,16 +152,20 @@ if "KRX" in market_choice:
         )
     with k4:
         for_val = inv_kp.get('foreign', 0.0)
+        kp_for_label = "코스피 외국인 순매매 " + ("(실시간)" if m_status['is_live'] else "(종가)")
         st.metric(
-            label="코스피 외국인 순매매",
+            label=kp_for_label,
             value=f"{for_val:+,.0f} 억원",
             delta="순매수 유입" if for_val > 0 else ("순매도 출회" if for_val < 0 else "보합"),
             delta_color="normal" if for_val > 0 else ("inverse" if for_val < 0 else "off")
         )
     with k5:
         non_arb = prog.get('non_arbitrage', 0.0)
+        prog_time = prog.get('time_str', '')
+        prog_badge = f"(실시간 {prog_time})" if (prog.get('is_live') and prog_time) else ("(실시간)" if prog.get('is_live') else f"(마감: {prog.get('bizdate_fmt', '')})")
+        prog_label = f"프로그램 비차익 순매매 {prog_badge}"
         st.metric(
-            label="프로그램 비차익 순매매",
+            label=prog_label,
             value=f"{non_arb:+,.0f} 억원",
             delta="순매수 유입" if non_arb > 0 else ("순매도 출회" if non_arb < 0 else "보합"),
             delta_color="normal" if non_arb > 0 else ("inverse" if non_arb < 0 else "off")
@@ -182,46 +186,48 @@ if "KRX" in market_choice:
     kd_flat = kd_b.get('flat', 0)
     kd_ratio = kd_b.get('up_ratio', 0.0)
 
-    ribbon_html = f"""
-    <div class='info-ribbon-container'>
-        <div class='info-ribbon-title'>
-            <span>📊 <b>시장 등락 종목 수 (Market Breadth)</b></span>
+    st.markdown(f"""
+    <div class='metric-ribbon'>
+        <div class='metric-ribbon-item'>
+            <span class='metric-ribbon-label'>🇰🇷 코스피 등락분포</span>
+            <span class='metric-ribbon-value'>
+                <span class='up-badge'>▲ 상승 {kp_up}</span>
+                <span class='down-badge'>▼ 하락 {kp_down}</span>
+                <span class='flat-badge'>- 보합 {kp_flat}</span>
+                <span class='ratio-badge'>({kp_ratio:.1f}%)</span>
+            </span>
         </div>
-        <div class='info-ribbon-content'>
-            <div class='info-ribbon-group'>
-                <span class='info-group-label'>코스피:</span>
-                <span class='breadth-chip chip-up'>🔴 상승 {kp_up:,}</span>
-                <span class='breadth-chip chip-flat'>⚪ 보합 {kp_flat:,}</span>
-                <span class='breadth-chip chip-down'>🔵 하락 {kp_down:,}</span>
-                <span class='breadth-chip chip-neutral'>상승비율 {kp_ratio:.1f}%</span>
-            </div>
-            <span class='ribbon-divider'>|</span>
-            <div class='info-ribbon-group'>
-                <span class='info-group-label'>코스닥:</span>
-                <span class='breadth-chip chip-up'>🔴 상승 {kd_up:,}</span>
-                <span class='breadth-chip chip-flat'>⚪ 보합 {kd_flat:,}</span>
-                <span class='breadth-chip chip-down'>🔵 하락 {kd_down:,}</span>
-                <span class='breadth-chip chip-neutral'>상승비율 {kd_ratio:.1f}%</span>
-            </div>
+        <div class='metric-ribbon-divider'></div>
+        <div class='metric-ribbon-item'>
+            <span class='metric-ribbon-label'>🚀 코스닥 등락분포</span>
+            <span class='metric-ribbon-value'>
+                <span class='up-badge'>▲ 상승 {kd_up}</span>
+                <span class='down-badge'>▼ 하락 {kd_down}</span>
+                <span class='flat-badge'>- 보합 {kd_flat}</span>
+                <span class='ratio-badge'>({kd_ratio:.1f}%)</span>
+            </span>
         </div>
     </div>
-    """
-    st.markdown(ribbon_html, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    # 2. 오늘의 시장 요약 (핵심 3선 + 심층 브리핑)
-    section_summary_title = "📌 현재 장중 시장 상황 요약" if m_status['is_live'] else "📌 오늘의 시장 마감 요약"
-    st.markdown(f"<div class='section-header'>{section_summary_title}</div>", unsafe_allow_html=True)
-    
-    # 3줄 핵심 총평 (다크 배경 + 고선명 텍스트)
-    st.markdown("#### ⚡ **1분 핵심 총평**")
-    for b in briefing['bullets']:
-        b_formatted = b.replace("**", "<strong>", 1).replace("**", "</strong>", 1)
-        st.markdown(f"<div class='summary-bullet'>• {b_formatted}</div>", unsafe_allow_html=True)
+    # 2. 1분 핵심 요약 총평 (Executive Bullets)
+    st.markdown("<div class='section-header'>⚡ 당일 시장 핵심 1분 총평</div>", unsafe_allow_html=True)
+    bullets_html = "".join([f"<li class='bullet-item' style='margin-bottom: 8px;'>{b}</li>" for b in briefing['bullets']])
+    st.markdown(f"""
+    <div class='bullet-box'>
+        <ul style='list-style-type: none; padding-left: 0; margin-bottom: 0;'>
+            {bullets_html}
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # 상세 마켓 브리핑
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 2-1. 상세 마켓 브리핑 (아코디언 형태)
     expander_title = "📖 **상세 마켓 브리핑 보기 (지수·수급·주도섹터 심층 분석)**"
-    with st.expander(expander_title, expanded=True):
+    with st.expander(expander_title, expanded=False):
         st.markdown(briefing['detailed_brief'])
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -231,34 +237,85 @@ if "KRX" in market_choice:
 
     with col_chart:
         st.markdown("<div class='section-header'>💰 투자 주체별 수급 동향 (KOSPI)</div>", unsafe_allow_html=True)
-        # 수급 바 차트 (개인: 옐로우/골드, 외국인: 퍼플/바이올렛, 기관: 에메랄드 그린으로 3색 명확 분리)
-        p_val = inv_kp.get('personal', 0.0)
-        f_val = inv_kp.get('foreign', 0.0)
-        i_val = inv_kp.get('institutional', 0.0)
+        
+        tab_live, tab_prev = st.tabs(["🔴 당일 장중 실시간 잠정", "🏁 전일 마감 확정 수급"])
 
-        color_p = '#f59e0b' if p_val >= 0 else '#d97706'  # 개인: 골드/앰버
-        color_f = '#8b5cf6' if f_val >= 0 else '#6366f1'  # 외국인: 바이올렛/퍼플
-        color_i = '#10b981' if i_val >= 0 else '#059669'  # 기관: 에메랄드 그린
+        with tab_live:
+            # 1. 당일 실시간 바 차트
+            p_val = inv_kp.get('personal', 0.0)
+            f_val = inv_kp.get('foreign', 0.0)
+            i_val = inv_kp.get('institutional', 0.0)
+            live_time = prog.get('time_str', '')
+            live_time_str = f" ({live_time} 기준)" if live_time else ""
 
-        fig_inv = go.Figure(go.Bar(
-            x=['개인', '외국인', '기관'],
-            y=[p_val, f_val, i_val],
-            marker_color=[color_p, color_f, color_i],
-            marker_line=dict(width=1.5, color=['#fbbf24', '#a78bfa', '#34d399']),
-            text=[f"{p_val:+,.0f}억", f"{f_val:+,.0f}억", f"{i_val:+,.0f}억"],
-            textposition='auto',
-            textfont=dict(color='#ffffff', size=13, family='Pretendard')
-        ))
-        fig_inv.update_layout(
-            margin=dict(l=20, r=20, t=20, b=20),
-            height=260,
-            yaxis_title="순매수액 (억원)",
-            template="plotly_dark",
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(30,41,59,0.5)',
-            font=dict(color='#e2e8f0')
-        )
-        st.plotly_chart(fig_inv, use_container_width=True)
+            st.caption(f"📅 **집계 기준**: {m_status.get('current_time_str', '')}{live_time_str} | 💡 주요 거래원 상위 5개사 기반 실시간 잠정치")
+
+            color_p = '#f59e0b' if p_val >= 0 else '#d97706'  # 개인: 골드/앰버
+            color_f = '#8b5cf6' if f_val >= 0 else '#6366f1'  # 외국인: 바이올렛/퍼플
+            color_i = '#10b981' if i_val >= 0 else '#059669'  # 기관: 에메랄드 그린
+
+            fig_inv = go.Figure(go.Bar(
+                x=['개인', '외국인', '기관'],
+                y=[p_val, f_val, i_val],
+                marker_color=[color_p, color_f, color_i],
+                marker_line=dict(width=1.5, color=['#fbbf24', '#a78bfa', '#34d399']),
+                text=[f"{p_val:+,.0f}억", f"{f_val:+,.0f}억", f"{i_val:+,.0f}억"],
+                textposition='auto',
+                textfont=dict(color='#ffffff', size=13, family='Pretendard')
+            ))
+            fig_inv.update_layout(
+                margin=dict(l=20, r=20, t=10, b=10),
+                height=230,
+                yaxis_title="순매수액 (억원)",
+                template="plotly_dark",
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(30,41,59,0.5)',
+                font=dict(color='#e2e8f0')
+            )
+            st.plotly_chart(fig_inv, use_container_width=True)
+
+        with tab_prev:
+            inv_prev = data.get('investors_kospi_prev', {})
+            prev_date = inv_prev.get('date', '직전 거래일')
+            st.caption(f"🏁 **집계 기준**: 20{prev_date} 정규장 마감 확정치 (한국거래소 공식 정산 집계)")
+
+            pp_val = inv_prev.get('personal', 0.0)
+            pf_val = inv_prev.get('foreign', 0.0)
+            pi_val = inv_prev.get('institutional', 0.0)
+
+            color_pp = '#f59e0b' if pp_val >= 0 else '#d97706'
+            color_pf = '#8b5cf6' if pf_val >= 0 else '#6366f1'
+            color_pi = '#10b981' if pi_val >= 0 else '#059669'
+
+            fig_prev = go.Figure(go.Bar(
+                x=['개인', '외국인', '기관'],
+                y=[pp_val, pf_val, pi_val],
+                marker_color=[color_pp, color_pf, color_pi],
+                marker_line=dict(width=1.5, color=['#fbbf24', '#a78bfa', '#34d399']),
+                text=[f"{pp_val:+,.0f}억", f"{pf_val:+,.0f}억", f"{pi_val:+,.0f}억"],
+                textposition='auto',
+                textfont=dict(color='#ffffff', size=13, family='Pretendard')
+            ))
+            fig_prev.update_layout(
+                margin=dict(l=20, r=20, t=10, b=10),
+                height=210,
+                yaxis_title="순매수액 (억원)",
+                template="plotly_dark",
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(30,41,59,0.5)',
+                font=dict(color='#e2e8f0')
+            )
+            st.plotly_chart(fig_prev, use_container_width=True)
+
+            # 최근 5거래일 일자별 수급 표
+            df_hist = data.get('investors_history_kospi', pd.DataFrame())
+            if not df_hist.empty:
+                st.markdown("<div style='font-size: 0.85rem; font-weight: 600; margin-top: 10px; margin-bottom: 4px; color: #cbd5e1;'>📋 최근 5거래일 일자별 수급 추이 (단위: 억원)</div>", unsafe_allow_html=True)
+                show_cols = [c for c in ['날짜', '개인', '외국인', '기관계', '금융투자', '연기금', '기타법인'] if c in df_hist.columns]
+                df_disp = df_hist[show_cols].copy()
+                for c in show_cols[1:]:
+                    df_disp[c] = df_disp[c].apply(lambda x: f"{x:+,.0f}")
+                st.dataframe(df_disp, use_container_width=True, hide_index=True)
 
     with col_stocks:
         st.markdown("<div class='section-header'>🏆 코스피 시가총액 상위 대형주</div>", unsafe_allow_html=True)
