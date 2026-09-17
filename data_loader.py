@@ -354,8 +354,8 @@ def get_krx_summary():
         print(f"Error attaching KOSPI history: {e}")
         hist_kospi = {'prev': {}, 'history': pd.DataFrame()}
 
-    # 3-1. KOSPI 실시간 수급 및 fallback 판정
-    kp_inv_live = {}
+    # 3-1. KOSPI 실시간 잠정 수급 (당일 장중/개장전 수치 유지)
+    kp_inv_live = {'personal': 0.0, 'foreign': 0.0, 'institutional': 0.0, 'bizdate': ''}
     try:
         res = requests.get('https://m.stock.naver.com/api/index/KOSPI/trend', headers=HEADERS, timeout=5)
         if res.status_code == 200:
@@ -369,21 +369,7 @@ def get_krx_summary():
     except Exception as e:
         print(f"Error fetching KOSPI trend: {e}")
 
-    kp_prev = result['investors_kospi_prev']
-    # 실시간 장중이고 실제 수치가 존재하면 실시간 수치 사용
-    if cur_m_status.get('is_live') and (kp_inv_live.get('foreign', 0) != 0 or kp_inv_live.get('personal', 0) != 0):
-        result['investors_kospi'] = kp_inv_live
-    elif kp_prev:
-        # 장 개장 전 / 마감 / 주말 또는 실시간 집계가 0일 때는 직전 종가 확정치 사용
-        result['investors_kospi'] = {
-            'personal': kp_prev.get('personal', 0.0),
-            'foreign': kp_prev.get('foreign', 0.0),
-            'institutional': kp_prev.get('institutional', 0.0),
-            'bizdate': kp_prev.get('bizdate', ''),
-            'is_prev_close': True
-        }
-    else:
-        result['investors_kospi'] = kp_inv_live
+    result['investors_kospi'] = kp_inv_live
 
     # 4. KOSDAQ 전일 마감 수급 및 최근 일자별 추이
     try:
@@ -394,8 +380,8 @@ def get_krx_summary():
         print(f"Error attaching KOSDAQ history: {e}")
         hist_kosdaq = {'prev': {}, 'history': pd.DataFrame()}
 
-    # 4-1. KOSDAQ 실시간 수급 및 fallback 판정
-    kd_inv_live = {}
+    # 4-1. KOSDAQ 실시간 잠정 수급 (당일 장중/개장전 수치 유지)
+    kd_inv_live = {'personal': 0.0, 'foreign': 0.0, 'institutional': 0.0, 'bizdate': ''}
     try:
         res = requests.get('https://m.stock.naver.com/api/index/KOSDAQ/trend', headers=HEADERS, timeout=5)
         if res.status_code == 200:
@@ -409,19 +395,7 @@ def get_krx_summary():
     except Exception as e:
         print(f"Error fetching KOSDAQ trend: {e}")
 
-    kd_prev = result['investors_kosdaq_prev']
-    if cur_m_status.get('is_live') and (kd_inv_live.get('foreign', 0) != 0 or kd_inv_live.get('personal', 0) != 0):
-        result['investors_kosdaq'] = kd_inv_live
-    elif kd_prev:
-        result['investors_kosdaq'] = {
-            'personal': kd_prev.get('personal', 0.0),
-            'foreign': kd_prev.get('foreign', 0.0),
-            'institutional': kd_prev.get('institutional', 0.0),
-            'bizdate': kd_prev.get('bizdate', ''),
-            'is_prev_close': True
-        }
-    else:
-        result['investors_kosdaq'] = kd_inv_live
+    result['investors_kosdaq'] = kd_inv_live
 
     # 4-1. KOSPI 프로그램 매매 (특히 비차익 순매매)
     try:

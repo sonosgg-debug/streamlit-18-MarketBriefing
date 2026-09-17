@@ -257,22 +257,20 @@ if "KRX" in market_choice:
             live_time_str = f" ({live_time} 기준)" if live_time else ""
 
             if m_status.get('status') == 'PRE_MARKET':
-                st.caption(f"📅 **현재 시각**: {m_status.get('current_time_str', '')} | ⏳ **개장 전 대기**: 09:00 정규장 개장 후 실시간 잠정 수급이 집계됩니다. (직전 마감치는 오른쪽 탭 참조)")
-            elif inv_kp.get('is_prev_close'):
-                st.caption(f"📅 **집계 기준**: 직전 정규장 마감 확정치 | 💡 장 마감 상태 수급 데이터")
+                st.caption(f"📅 **현재 시각**: {m_status.get('current_time_str', '')} | ⏳ **개장 전 대기**: 현재 정규장 개장 전으로 실시간 잠정치는 0으로 표시됩니다. (직전 거래일 마감 확정치는 오른쪽 탭 참조)")
             else:
                 st.caption(f"📅 **집계 기준**: {m_status.get('current_time_str', '')}{live_time_str} | 💡 주요 거래원 상위 5개사 기반 실시간 잠정치")
 
-            color_p = '#f59e0b' if p_val >= 0 else '#d97706'  # 개인: 골드/앰버
-            color_f = '#8b5cf6' if f_val >= 0 else '#6366f1'  # 외국인: 바이올렛/퍼플
-            color_i = '#10b981' if i_val >= 0 else '#059669'  # 기관: 에메랄드 그린
+            color_p = '#f59e0b' if p_val > 0 else ('#d97706' if p_val < 0 else '#64748b')  # 개인: 골드/앰버 (0: 슬레이트)
+            color_f = '#8b5cf6' if f_val > 0 else ('#6366f1' if f_val < 0 else '#64748b')  # 외국인: 바이올렛/퍼플 (0: 슬레이트)
+            color_i = '#10b981' if i_val > 0 else ('#059669' if i_val < 0 else '#64748b')  # 기관: 에메랄드 그린 (0: 슬레이트)
 
             fig_inv = go.Figure(go.Bar(
                 x=['개인', '외국인', '기관'],
                 y=[p_val, f_val, i_val],
                 marker_color=[color_p, color_f, color_i],
-                marker_line=dict(width=1.5, color=['#fbbf24', '#a78bfa', '#34d399']),
-                text=[f"{p_val:+,.0f}억", f"{f_val:+,.0f}억", f"{i_val:+,.0f}억"],
+                marker_line=dict(width=1.5, color=['#fbbf24' if p_val != 0 else '#94a3b8', '#a78bfa' if f_val != 0 else '#94a3b8', '#34d399' if i_val != 0 else '#94a3b8']),
+                text=[f"{p_val:+,.0f}억" if p_val != 0 else "0억", f"{f_val:+,.0f}억" if f_val != 0 else "0억", f"{i_val:+,.0f}억" if i_val != 0 else "0억"],
                 textposition='auto',
                 textfont=dict(color='#ffffff', size=13, family='Pretendard')
             ))
