@@ -148,65 +148,133 @@ def clean_float(val):
     except:
         return 0.0
 
+def _parse_trend_content_item(item):
+    """
+    네이버 신규 REST API(trend/daily, trend/time)의 netAmounts 데이터를
+    투자 주체별 순매매액(단위: 억원)으로 파싱
+    """
+    Y = {
+        "8000": "personal",
+        "9000": "foreign",
+        "9999": "institutional",
+        "1000": "financial_invest",
+        "2000": "insurance",
+        "3000": "investment_trust",
+        "4000": "bank",
+        "5000": "other_finance",
+        "6000": "pension",
+        "7100": "other_corp"
+    }
+
+    bizdate = str(item.get('bizdate', ''))
+    date_short = f"{bizdate[2:4]}.{bizdate[4:6]}.{bizdate[6:8]}" if len(bizdate) == 8 else bizdate
+    bizdate_fmt = f"{bizdate[4:6]}/{bizdate[6:8]}" if len(bizdate) == 8 else bizdate
+
+    res = {
+        'date': date_short,
+        'bizdate': bizdate,
+        'bizdate_fmt': bizdate_fmt,
+        'time': str(item.get('time', '')),
+        'personal': 0.0,
+        'foreign': 0.0,
+        'institutional': 0.0,
+        'financial_invest': 0.0,
+        'insurance': 0.0,
+        'investment_trust': 0.0,
+        'bank': 0.0,
+        'other_finance': 0.0,
+        'pension': 0.0,
+        'other_corp': 0.0
+    }
+
+    for na in item.get('netAmounts', []):
+        gubun = str(na.get('investorGubun', ''))
+        val = float(na.get('diffValue', 0)) / 1e8  # 원 -> 억원 변환
+
+        if gubun == "3100":
+            res['investment_trust'] += val
+        elif gubun == "9001":
+            res['foreign'] += val
+        elif gubun == "7000":
+            res['pension'] += val
+        elif gubun in Y:
+            res[Y[gubun]] += val
+
+    # 기관계 합계 계산
+    res['institutional'] = (
+        res['financial_invest'] +
+        res['insurance'] +
+        res['investment_trust'] +
+        res['bank'] +
+        res['other_finance'] +
+        res['pension']
+    )
+    return res
+
 def get_investor_trend_history(sosok='01'):
     """
-    네이버 금융 일자별 투자자 매매동향(최근 5~10일) 및 전일 마감 확정 수치 반환
-    sosok: '01' (KOSPI), '02' (KOSDAQ)
+    네이버 증권 공식 REST API를 활용하여 일자별 투자자 매매동향 및 직전 마감 확정 수치 반환
+    sosok: '01' / 'KOSPI', '02' / 'KOSDAQ'
     """
+    market_type = 'KOSPI' if str(sosok) in ['01', 'KOSPI'] else 'KOSDAQ'
     try:
-        now_kst = get_now_kst()
-        today_str = now_kst.strftime('%Y%m%d')
-        url = f'https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate={today_str}&sosok={sosok}'
+        url = f'https://stock.naver.com/api/domestic/market/trend/daily?tradeType=KRX&marketType={market_type}&pageSize=10'
         r = requests.get(url, headers=HEADERS, timeout=5)
         if r.status_code == 200:
-            dfs = pd.read_html(io.StringIO(r.content.decode('cp949', errors='replace')))
-            if dfs and not dfs[0].empty:
-                df = dfs[0].dropna(how='all').copy()
-                std_cols = ['날짜', '개인', '외국인', '기관계', '금융투자', '보험', '투신', '은행', '기타금융', '연기금', '기타법인']
-                if len(df.columns) == len(std_cols):
-                    df.columns = std_cols
+            content = r.json().get('content', [])
+            if content:
+                rows = [_parse_trend_content_item(it) for it in content]
+
+                df_data = []
+                for row in rows:
+                    df_data.append({
+                        '날짜': row['date'],
+                        '개인': round(row['personal'], 1),
+                        '외국인': round(row['foreign'], 1),
+                        '기관계': round(row['institutional'], 1),
+                        '금융투자': round(row['financial_invest'], 1),
+                        '보험': round(row['insurance'], 1),
+                        '투신': round(row['investment_trust'], 1),
+                        '은행': round(row['bank'], 1),
+                        '기타금융': round(row['other_finance'], 1),
+                        '연기금': round(row['pension'], 1),
+                        '기타법인': round(row['other_corp'], 1)
+                    })
+                df = pd.DataFrame(df_data)
+
+                # 직전 정규장 마감 행 추출
+                now_kst = get_now_kst()
+                today_str = now_kst.strftime('%Y%m%d')
+
+                # 첫 번째 행이 오늘 날짜(장중 잠정)이면 두 번째 행이 직전 마감, 아니면 첫 번째 행이 직전 마감
+                if rows[0]['bizdate'] == today_str and len(rows) > 1:
+                    prev_row = rows[1]
                 else:
-                    df.columns = [c[1] if isinstance(c, tuple) and c[1] else c[0] if isinstance(c, tuple) else str(c) for c in df.columns]
-                
-                df = df[df['날짜'].astype(str).str.match(r'^\d{2}\.\d{2}\.\d{2}$')].reset_index(drop=True)
-                for col in df.columns[1:]:
-                    df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '').str.replace('+', ''), errors='coerce').fillna(0.0)
-                
-                # 전일(직전 거래일) 마감 행 추출
-                today_short = now_kst.strftime('%y.%m.%d')
-                first_date = str(df.iloc[0]['날짜']).strip() if len(df) > 0 else ''
-                
-                # 첫 번째 행이 오늘 날짜(장중 잠정)이면 두 번째 행이 전일 마감, 아니면 첫 번째 행이 직전 마감
-                if first_date == today_short and len(df) > 1:
-                    prev_row = df.iloc[1]
-                elif len(df) > 0:
-                    prev_row = df.iloc[0]
-                else:
-                    prev_row = pd.Series()
-                
-                prev_data = {}
-                if not prev_row.empty:
-                    prev_data = {
-                        'date': str(prev_row.get('날짜', '')),
-                        'personal': float(prev_row.get('개인', 0.0)),
-                        'foreign': float(prev_row.get('외국인', 0.0)),
-                        'institutional': float(prev_row.get('기관계', 0.0)),
-                        'financial_invest': float(prev_row.get('금융투자', 0.0)),
-                        'insurance': float(prev_row.get('보험', 0.0)),
-                        'investment_trust': float(prev_row.get('투신', 0.0)),
-                        'bank': float(prev_row.get('은행', 0.0)),
-                        'other_finance': float(prev_row.get('기타금융', 0.0)),
-                        'pension': float(prev_row.get('연기금', 0.0)),
-                        'other_corp': float(prev_row.get('기타법인', 0.0))
-                    }
-                
+                    prev_row = rows[0]
+
+                prev_data = {
+                    'date': prev_row['date'],
+                    'bizdate': prev_row['bizdate'],
+                    'bizdate_fmt': prev_row['bizdate_fmt'],
+                    'personal': round(prev_row['personal'], 1),
+                    'foreign': round(prev_row['foreign'], 1),
+                    'institutional': round(prev_row['institutional'], 1),
+                    'financial_invest': round(prev_row['financial_invest'], 1),
+                    'insurance': round(prev_row['insurance'], 1),
+                    'investment_trust': round(prev_row['investment_trust'], 1),
+                    'bank': round(prev_row['bank'], 1),
+                    'other_finance': round(prev_row['other_finance'], 1),
+                    'pension': round(prev_row['pension'], 1),
+                    'other_corp': round(prev_row['other_corp'], 1)
+                }
+
                 return {
                     'prev': prev_data,
                     'history': df.head(6)
                 }
     except Exception as e:
-        print(f"Error fetching investor trend history (sosok={sosok}): {e}")
-    
+        print(f"Error fetching investor trend history for {market_type}: {e}")
+
     return {'prev': {}, 'history': pd.DataFrame()}
 
 def get_krx_summary():
@@ -222,7 +290,9 @@ def get_krx_summary():
         'investors_kospi': {},
         'investors_kosdaq': {},
         'investors_kospi_prev': {},
+        'investors_kosdaq_prev': {},
         'investors_history_kospi': pd.DataFrame(),
+        'investors_history_kosdaq': pd.DataFrame(),
         'program': {
             'name': '프로그램 비차익 순매매',
             'non_arbitrage': 0.0,
@@ -273,13 +343,24 @@ def get_krx_summary():
     except Exception as e:
         print(f"Error fetching KOSDAQ price: {e}")
 
-    # 3. KOSPI 투자자별 수급 (Trend API)
+    cur_m_status = get_market_status('KRX')
+
+    # 3. KOSPI 전일 마감 수급 및 최근 일자별 추이 (공식 REST API)
+    try:
+        hist_kospi = get_investor_trend_history('01')
+        result['investors_kospi_prev'] = hist_kospi.get('prev', {})
+        result['investors_history_kospi'] = hist_kospi.get('history', pd.DataFrame())
+    except Exception as e:
+        print(f"Error attaching KOSPI history: {e}")
+        hist_kospi = {'prev': {}, 'history': pd.DataFrame()}
+
+    # 3-1. KOSPI 실시간 수급 및 fallback 판정
+    kp_inv_live = {}
     try:
         res = requests.get('https://m.stock.naver.com/api/index/KOSPI/trend', headers=HEADERS, timeout=5)
         if res.status_code == 200:
             trend = res.json()
-            # 억 원 단위 변환 또는 원본 값 파싱
-            result['investors_kospi'] = {
+            kp_inv_live = {
                 'personal': clean_float(trend.get('personalValue', 0)),
                 'foreign': clean_float(trend.get('foreignValue', 0)),
                 'institutional': clean_float(trend.get('institutionalValue', 0)),
@@ -288,20 +369,38 @@ def get_krx_summary():
     except Exception as e:
         print(f"Error fetching KOSPI trend: {e}")
 
-    # 3-1. KOSPI 전일 마감 수급 및 최근 일자별 추이
-    try:
-        hist_kospi = get_investor_trend_history('01')
-        result['investors_kospi_prev'] = hist_kospi.get('prev', {})
-        result['investors_history_kospi'] = hist_kospi.get('history', pd.DataFrame())
-    except Exception as e:
-        print(f"Error attaching KOSPI history: {e}")
+    kp_prev = result['investors_kospi_prev']
+    # 실시간 장중이고 실제 수치가 존재하면 실시간 수치 사용
+    if cur_m_status.get('is_live') and (kp_inv_live.get('foreign', 0) != 0 or kp_inv_live.get('personal', 0) != 0):
+        result['investors_kospi'] = kp_inv_live
+    elif kp_prev:
+        # 장 개장 전 / 마감 / 주말 또는 실시간 집계가 0일 때는 직전 종가 확정치 사용
+        result['investors_kospi'] = {
+            'personal': kp_prev.get('personal', 0.0),
+            'foreign': kp_prev.get('foreign', 0.0),
+            'institutional': kp_prev.get('institutional', 0.0),
+            'bizdate': kp_prev.get('bizdate', ''),
+            'is_prev_close': True
+        }
+    else:
+        result['investors_kospi'] = kp_inv_live
 
-    # 4. KOSDAQ 투자자별 수급
+    # 4. KOSDAQ 전일 마감 수급 및 최근 일자별 추이
+    try:
+        hist_kosdaq = get_investor_trend_history('02')
+        result['investors_kosdaq_prev'] = hist_kosdaq.get('prev', {})
+        result['investors_history_kosdaq'] = hist_kosdaq.get('history', pd.DataFrame())
+    except Exception as e:
+        print(f"Error attaching KOSDAQ history: {e}")
+        hist_kosdaq = {'prev': {}, 'history': pd.DataFrame()}
+
+    # 4-1. KOSDAQ 실시간 수급 및 fallback 판정
+    kd_inv_live = {}
     try:
         res = requests.get('https://m.stock.naver.com/api/index/KOSDAQ/trend', headers=HEADERS, timeout=5)
         if res.status_code == 200:
             trend = res.json()
-            result['investors_kosdaq'] = {
+            kd_inv_live = {
                 'personal': clean_float(trend.get('personalValue', 0)),
                 'foreign': clean_float(trend.get('foreignValue', 0)),
                 'institutional': clean_float(trend.get('institutionalValue', 0)),
@@ -309,6 +408,20 @@ def get_krx_summary():
             }
     except Exception as e:
         print(f"Error fetching KOSDAQ trend: {e}")
+
+    kd_prev = result['investors_kosdaq_prev']
+    if cur_m_status.get('is_live') and (kd_inv_live.get('foreign', 0) != 0 or kd_inv_live.get('personal', 0) != 0):
+        result['investors_kosdaq'] = kd_inv_live
+    elif kd_prev:
+        result['investors_kosdaq'] = {
+            'personal': kd_prev.get('personal', 0.0),
+            'foreign': kd_prev.get('foreign', 0.0),
+            'institutional': kd_prev.get('institutional', 0.0),
+            'bizdate': kd_prev.get('bizdate', ''),
+            'is_prev_close': True
+        }
+    else:
+        result['investors_kosdaq'] = kd_inv_live
 
     # 4-1. KOSPI 프로그램 매매 (특히 비차익 순매매)
     try:

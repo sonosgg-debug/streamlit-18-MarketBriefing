@@ -30,6 +30,12 @@ def generate_krx_briefing(krx_data, is_live=False, time_str=""):
     kp_inst = inv_kp.get('institutional', 0.0)
     kp_indiv = inv_kp.get('personal', 0.0)
 
+    inv_kp_prev = krx_data.get('investors_kospi_prev', {})
+    if not is_live and (kp_foreign == 0.0 and kp_inst == 0.0 and kp_indiv == 0.0) and inv_kp_prev:
+        kp_foreign = inv_kp_prev.get('foreign', 0.0)
+        kp_inst = inv_kp_prev.get('institutional', 0.0)
+        kp_indiv = inv_kp_prev.get('personal', 0.0)
+
     program = krx_data.get('program', {})
     prog_non_arb = program.get('non_arbitrage', 0.0)
 
