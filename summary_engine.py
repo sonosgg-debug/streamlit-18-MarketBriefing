@@ -79,8 +79,11 @@ def generate_krx_briefing(krx_data, is_live=False, time_str=""):
 
     # 체감 등락 코멘트
     breadth_comment = ""
-    if kp_breadth.get('total', 0) > 0:
-        breadth_comment = f" (코스피 상승 {kp_breadth.get('up')}종목 vs 하락 {kp_breadth.get('down')}종목으로 체감 장세 {'우세' if kp_breadth.get('up', 0) > kp_breadth.get('down', 0) else '둔화'})"
+    kp_up_cnt = kp_breadth.get('up', 0)
+    kp_down_cnt = kp_breadth.get('down', 0)
+    if kp_breadth.get('total', 0) > 0 and (kp_up_cnt > 0 or kp_down_cnt > 0):
+        feel_tone = '우세' if kp_up_cnt > kp_down_cnt else ('팽팽' if kp_up_cnt == kp_down_cnt else '둔화')
+        breadth_comment = f" (코스피 상승 {kp_up_cnt}종목 vs 하락 {kp_down_cnt}종목으로 체감 장세 {feel_tone})"
 
     # 1분 핵심 총평 (3 Bullets)
     bullets = [

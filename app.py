@@ -189,7 +189,7 @@ if "KRX" in market_choice:
     st.markdown(f"""
     <div class='metric-ribbon'>
         <div class='metric-ribbon-item'>
-            <span class='metric-ribbon-label'>🇰🇷 코스피 등락분포</span>
+            <span class='metric-ribbon-label'>KS 코스피 등락분포</span>
             <span class='metric-ribbon-value'>
                 <span class='up-badge'>▲ 상승 {kp_up}</span>
                 <span class='down-badge'>▼ 하락 {kp_down}</span>
@@ -199,7 +199,7 @@ if "KRX" in market_choice:
         </div>
         <div class='metric-ribbon-divider'></div>
         <div class='metric-ribbon-item'>
-            <span class='metric-ribbon-label'>🚀 코스닥 등락분포</span>
+            <span class='metric-ribbon-label'>KQ 코스닥 등락분포</span>
             <span class='metric-ribbon-value'>
                 <span class='up-badge'>▲ 상승 {kd_up}</span>
                 <span class='down-badge'>▼ 하락 {kd_down}</span>

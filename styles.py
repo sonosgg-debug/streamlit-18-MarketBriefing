@@ -433,6 +433,90 @@ section[data-testid="stSidebar"] {
         font-weight: 300;
         margin: 0 2px;
     }
+
+    /* 코스피/코스닥 등락분포 슬림 인포 리본 바 */
+    .metric-ribbon {
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 10px;
+        padding: 10px 18px;
+        margin-top: 4px;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+        flex-wrap: wrap;
+        gap: 16px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
+    }
+    .metric-ribbon-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .metric-ribbon-label {
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: #cbd5e1;
+        white-space: nowrap;
+    }
+    .metric-ribbon-value {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .metric-ribbon-divider {
+        width: 1px;
+        height: 24px;
+        background-color: #334155;
+    }
+    .up-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        background: rgba(239, 68, 68, 0.15);
+        color: #fca5a5;
+        border: 1px solid rgba(239, 68, 68, 0.35);
+    }
+    .down-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        background: rgba(59, 130, 246, 0.15);
+        color: #93c5fd;
+        border: 1px solid rgba(59, 130, 246, 0.35);
+    }
+    .flat-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        background: rgba(148, 163, 184, 0.15);
+        color: #cbd5e1;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+    }
+    .ratio-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        background: rgba(51, 65, 85, 0.4);
+        color: #e2e8f0;
+        border: 1px solid #475569;
+    }
+
     
     /* 호버(PC) 및 터치 시 반전 효과 */
     [data-testid="stSidebarCollapseButton"] button:hover {

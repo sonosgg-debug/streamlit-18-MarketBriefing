@@ -412,14 +412,48 @@ def get_krx_summary():
         pass
 
     # 8. KOSPI & KOSDAQ 시장 등락 종목 수 (Market Breadth)
-    if fdr is not None:
+    # 1) Naver 모바일 프론트 API를 통한 실시간 등락 종목 수 직접 수집 (1순위: 실시간 집계 보장)
+    try:
+        for mkt_code, mkt_key in [('KOSPI', 'kospi'), ('KOSDAQ', 'kosdaq')]:
+            b_res = requests.get(
+                'https://m.stock.naver.com/front-api/stock/domestic/integration',
+                params={'code': mkt_code, 'endType': 'index'},
+                headers=HEADERS,
+                timeout=5
+            )
+            if b_res.status_code == 200:
+                b_json = b_res.json()
+                u_info = b_json.get('result', {}).get('upDownStockInfo', {})
+                if u_info:
+                    b_up = int(str(u_info.get('riseCount', 0)).replace(',', ''))
+                    b_down = int(str(u_info.get('fallCount', 0)).replace(',', ''))
+                    b_flat = int(str(u_info.get('steadyCount', 0)).replace(',', ''))
+                    b_upper = int(str(u_info.get('upperCount', 0)).replace(',', ''))
+                    b_lower = int(str(u_info.get('lowerCount', 0)).replace(',', ''))
+                    b_tot = b_up + b_down + b_flat
+                    b_ratio = round((b_up / (b_up + b_down) * 100) if (b_up + b_down) > 0 else 0.0, 1)
+                    if b_tot > 0:
+                        result['breadth'][mkt_key] = {
+                            'up': b_up,
+                            'down': b_down,
+                            'flat': b_flat,
+                            'upper': b_upper,
+                            'lower': b_lower,
+                            'total': b_tot,
+                            'up_ratio': b_ratio
+                        }
+    except Exception as e:
+        print(f"Error fetching Naver market breadth: {e}")
+
+    # 2) Naver 실패 시 FinanceDataReader 폴백 (2순위)
+    if result['breadth']['kospi']['total'] == 0 and fdr is not None:
         try:
             df_krx = fdr.StockListing('KRX')
             if not df_krx.empty and 'Market' in df_krx.columns and 'Changes' in df_krx.columns:
                 kp_stocks = df_krx[df_krx['Market'] == 'KOSPI']
                 kd_stocks = df_krx[df_krx['Market'] == 'KOSDAQ']
 
-                if not kp_stocks.empty:
+                if not kp_stocks.empty and not kp_stocks['Changes'].isna().all():
                     kp_up = int((kp_stocks['Changes'] > 0).sum())
                     kp_down = int((kp_stocks['Changes'] < 0).sum())
                     kp_flat = int((kp_stocks['Changes'] == 0).sum())
@@ -433,7 +467,7 @@ def get_krx_summary():
                         'up_ratio': kp_ratio
                     }
 
-                if not kd_stocks.empty:
+                if not kd_stocks.empty and not kd_stocks['Changes'].isna().all():
                     kd_up = int((kd_stocks['Changes'] > 0).sum())
                     kd_down = int((kd_stocks['Changes'] < 0).sum())
                     kd_flat = int((kd_stocks['Changes'] == 0).sum())
@@ -447,7 +481,7 @@ def get_krx_summary():
                         'up_ratio': kd_ratio
                     }
         except Exception as e:
-            print(f"Error fetching KRX market breadth: {e}")
+            print(f"Error fetching KRX market breadth fallback: {e}")
 
     return result
 
