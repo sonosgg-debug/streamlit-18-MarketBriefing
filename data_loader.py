@@ -9,6 +9,7 @@ import io
 import requests
 import yfinance as yf
 import pandas as pd
+import concurrent.futures
 from datetime import datetime, date, timezone, timedelta
 from zoneinfo import ZoneInfo
 
@@ -308,6 +309,8 @@ def get_krx_summary():
             'kosdaq': {'up': 0, 'down': 0, 'flat': 0, 'total': 0, 'up_ratio': 0.0}
         },
         'top_stocks': [],
+        'top_stocks_prev': [],
+        'top_stocks_prev_date': '',
         'history': pd.DataFrame()
     }
 
@@ -470,20 +473,59 @@ def get_krx_summary():
     except Exception as e:
         result['exchange_rate'] = {'name': '원/달러 환율', 'price': 1345.0, 'change': 0.0, 'ratio': 0.0}
 
-    # 6. KOSPI 시총 상위 대표 종목들
+    # 6. KOSPI 시총 상위 대표 종목들 (당일 실시간 & 전일 마감 확정)
     try:
         res = requests.get('https://m.stock.naver.com/api/stocks/marketValue/KOSPI?page=1&pageSize=6', headers=HEADERS, timeout=5)
         if res.status_code == 200:
             stocks = res.json().get('stocks', [])
             for st in stocks:
+                p_code = st.get('compareToPreviousPrice', {}).get('code', '3')
                 result['top_stocks'].append({
                     'name': st.get('stockName'),
                     'code': st.get('itemCode'),
                     'price': clean_float(st.get('closePrice')),
                     'change': clean_float(st.get('compareToPreviousClosePrice')),
                     'ratio': clean_float(st.get('fluctuationsRatio')),
-                    'direction': 'UP' if st.get('compareToPreviousPrice', {}).get('code') in ['2', '1'] else 'DOWN'
+                    'direction': 'UP' if p_code in ['2', '1'] else ('DOWN' if p_code in ['5', '4'] else 'FLAT')
                 })
+
+            # 전일 마감 확정 시세 병렬 수집
+            def fetch_prev_stock_price(stock_item):
+                code = stock_item.get('code')
+                name = stock_item.get('name')
+                try:
+                    r = requests.get(f'https://m.stock.naver.com/api/stock/{code}/price', headers=HEADERS, timeout=3)
+                    if r.status_code == 200:
+                        items = r.json()
+                        if len(items) > 1:
+                            prev = items[1]
+                            pr_code = prev.get('compareToPreviousPrice', {}).get('code', '3')
+                            sign = 1 if pr_code in ['2', '1'] else (-1 if pr_code in ['5', '4'] else 0)
+                            chg = clean_float(prev.get('compareToPreviousClosePrice', 0)) * sign
+                            ratio = clean_float(prev.get('fluctuationsRatio', 0)) * sign
+                            return {
+                                'name': name,
+                                'code': code,
+                                'date': prev.get('localTradedAt', ''),
+                                'price': clean_float(prev.get('closePrice')),
+                                'change': chg,
+                                'ratio': ratio,
+                                'direction': 'UP' if sign > 0 else ('DOWN' if sign < 0 else 'FLAT')
+                            }
+                except Exception:
+                    pass
+                return None
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+                prev_results = list(executor.map(fetch_prev_stock_price, result['top_stocks']))
+
+            prev_date_str = ""
+            for p in prev_results:
+                if p:
+                    result['top_stocks_prev'].append(p)
+                    if not prev_date_str and p.get('date'):
+                        prev_date_str = p.get('date')
+            result['top_stocks_prev_date'] = prev_date_str
     except Exception as e:
         print(f"Error fetching top stocks: {e}")
 

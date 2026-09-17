@@ -330,20 +330,49 @@ if "KRX" in market_choice:
 
     with col_stocks:
         st.markdown("<div class='section-header'>🏆 코스피 시가총액 상위 대형주</div>", unsafe_allow_html=True)
-        top_stocks = data.get('top_stocks', [])
-        if top_stocks:
-            stock_data = []
-            for s in top_stocks:
-                stock_data.append({
-                    "종목명": s.get('name'),
-                    "현재가(원)": f"{s.get('price', 0):,.0f}",
-                    "전일대비": f"{s.get('change', 0):+,.0f}",
-                    "등락률": f"{s.get('ratio', 0):+.2f}%"
-                })
-            df_st = pd.DataFrame(stock_data)
-            st.dataframe(df_st, use_container_width=True, hide_index=True)
-        else:
-            st.info("시가총액 상위 종목 데이터를 집계 중입니다.")
+        
+        tab_st_live, tab_st_prev = st.tabs(["🔴 당일 장중 실시간 시세", "🏁 전일 마감 확정 시세"])
+
+        with tab_st_live:
+            top_stocks = data.get('top_stocks', [])
+            if m_status.get('status') == 'PRE_MARKET':
+                st.caption(f"📅 **현재 시각**: {m_status.get('current_time_str', '')} | ⏳ **개장 전 대기**: 09:00 정규장 개장 후 실시간 체결 시세가 반영됩니다.")
+            else:
+                st.caption(f"📅 **집계 기준**: {m_status.get('current_time_str', '')} | 💡 실시간 정규장 체결 기준")
+
+            if top_stocks:
+                stock_data = []
+                for s in top_stocks:
+                    stock_data.append({
+                        "종목명": s.get('name'),
+                        "현재가(원)": f"{s.get('price', 0):,.0f}",
+                        "전일대비": f"{s.get('change', 0):+,.0f}",
+                        "등락률": f"{s.get('ratio', 0):+.2f}%"
+                    })
+                df_st = pd.DataFrame(stock_data)
+                st.dataframe(df_st, use_container_width=True, hide_index=True)
+            else:
+                st.info("시가총액 상위 종목 데이터를 집계 중입니다.")
+
+        with tab_st_prev:
+            top_stocks_prev = data.get('top_stocks_prev', [])
+            prev_date_st = data.get('top_stocks_prev_date', '')
+            prev_badge_st = prev_date_st if prev_date_st else "직전 거래일"
+            st.caption(f"🏁 **집계 기준**: {prev_badge_st} 정규장 마감 확정치 (한국거래소 공식 종가)")
+
+            if top_stocks_prev:
+                stock_prev_data = []
+                for s in top_stocks_prev:
+                    stock_prev_data.append({
+                        "종목명": s.get('name'),
+                        "종가(원)": f"{s.get('price', 0):,.0f}",
+                        "전일대비": f"{s.get('change', 0):+,.0f}",
+                        "등락률": f"{s.get('ratio', 0):+.2f}%"
+                    })
+                df_st_prev = pd.DataFrame(stock_prev_data)
+                st.dataframe(df_st_prev, use_container_width=True, hide_index=True)
+            else:
+                st.info("전일 마감 종목 데이터를 집계 중입니다.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 

@@ -71,8 +71,11 @@ def generate_krx_briefing(krx_data, is_live=False, time_str=""):
         flow_comment = f"기관의 방어적 매수에도 외국인 순매도(-{abs(kp_foreign):,.0f}억)가 이어지며 수급 공방 속에 {prog_word}"
 
     # 시총 상위주 동향
-    up_stocks = [s['name'] for s in top_stocks if s.get('ratio', 0) > 0]
-    down_stocks = [s['name'] for s in top_stocks if s.get('ratio', 0) < 0]
+    ref_stocks = top_stocks
+    if not is_live and not any(s.get('ratio', 0) != 0 for s in top_stocks):
+        ref_stocks = krx_data.get('top_stocks_prev', top_stocks)
+    up_stocks = [s['name'] for s in ref_stocks if s.get('ratio', 0) > 0]
+    down_stocks = [s['name'] for s in ref_stocks if s.get('ratio', 0) < 0]
     stock_trend = ""
     st_action = "강세를 나타내는 반면" if is_live else "강세를 보인 반면"
     st_down_action = "하락세를 보이며" if is_live else "하락 마감하며"
