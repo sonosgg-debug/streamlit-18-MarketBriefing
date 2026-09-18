@@ -631,8 +631,8 @@ def get_us_summary():
 
     # 미국 핵심 티커 리스트
     # ^GSPC: S&P500, ^IXIC: 나스닥, ^SOX: 필라델피아 반도체, ^DJI: 다우존스, ^RUT: 러셀2000
-    # ^VIX: 공포지수, ^TNX: 10년물 금리, CL=F: WTI유가, DX-Y.NYB: 달러인덱스
-    tickers = ['^GSPC', '^IXIC', '^SOX', '^DJI', '^RUT', '^VIX', '^TNX', 'CL=F', 'DX-Y.NYB']
+    # ^VIX: 공포지수, ^TNX: 10년물 금리, CL=F: WTI유가, DX-Y.NYB: 달러인덱스, GC=F: 금선물, BTC-USD: 비트코인
+    tickers = ['^GSPC', '^IXIC', '^SOX', '^DJI', '^RUT', '^VIX', '^TNX', 'CL=F', 'DX-Y.NYB', 'GC=F', 'BTC-USD']
     m7_symbols = ['NVDA', 'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'META', 'TSLA']
 
     try:
@@ -660,12 +660,15 @@ def get_us_summary():
                     'ratio': round(ratio, 2)
                 }
 
-        # 매크로 지표 파싱
+        # 매크로 지표 파싱 (M7 7개 종목과의 시각적 대칭을 맞춘 7대 거시 매크로 지표)
         macro_map = {
-            '^VIX': '변동성 지수 (VIX)',
+            '^SOX': '필라델피아 반도체 (SOX)',
             '^TNX': '미 국채 10년물 금리',
+            'DX-Y.NYB': '달러 인덱스 (DXY)',
             'CL=F': 'WTI 원유 선물',
-            'DX-Y.NYB': '달러 인덱스 (DXY)'
+            'GC=F': '금 선물 (Gold)',
+            'BTC-USD': '비트코인 (BTC)',
+            '^VIX': '변동성 지수 (VIX)'
         }
         for sym, name in macro_map.items():
             if sym in all_data.columns and len(all_data[sym].dropna()) >= 2:
@@ -674,7 +677,12 @@ def get_us_summary():
                 prev = series.iloc[-2]
                 change = curr - prev
                 ratio = (change / prev) * 100
-                unit = '%' if sym == '^TNX' else ('$' if sym == 'CL=F' else 'pt')
+                if sym == '^TNX':
+                    unit = '%'
+                elif sym in ['CL=F', 'GC=F', 'BTC-USD']:
+                    unit = '$'
+                else:
+                    unit = 'pt'
                 result['macro'][sym] = {
                     'name': name,
                     'price': round(curr, 2),

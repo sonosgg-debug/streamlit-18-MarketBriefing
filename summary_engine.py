@@ -181,6 +181,8 @@ def generate_us_briefing(us_data, is_live=False, time_str=""):
     tnx = macro.get('^TNX', {'price': 4.0, 'change': 0.0, 'ratio': 0.0})
     oil = macro.get('CL=F', {'price': 70.0, 'change': 0.0, 'ratio': 0.0})
     dxy = macro.get('DX-Y.NYB', {'price': 101.0, 'change': 0.0, 'ratio': 0.0})
+    gold = macro.get('GC=F', {'price': 0.0, 'change': 0.0, 'ratio': 0.0})
+    btc = macro.get('BTC-USD', {'price': 0.0, 'change': 0.0, 'ratio': 0.0})
 
     sp_ratio = sp500.get('ratio', 0.0)
     nasdaq_ratio = nasdaq.get('ratio', 0.0)
@@ -226,7 +228,7 @@ def generate_us_briefing(us_data, is_live=False, time_str=""):
 
 **[매크로 지표 & 금리 환경]**
 미 국채 10년물 금리가 {tnx.get('price', 0):.2f}%선에서 등락하며 연준의 통화정책 경로를 가늠하고 있습니다. 
-달러 인덱스(DXY)는 {dxy.get('price', 0):.2f}pt, WTI 원유는 배럴당 ${oil.get('price', 0):.2f}에 거래되며, 시장 공포지표인 VIX는 {vix.get('price', 0):.2f}pt를 기록해 시장 위험은 제한적인 범위에 머물렀습니다.
+달러 인덱스(DXY)는 {dxy.get('price', 0):.2f}pt, WTI 원유는 배럴당 ${oil.get('price', 0):.2f}에 거래되었으며, 안전자산인 금 선물은 온스당 ${gold.get('price', 0):,.2f}, 가상자산 대장주인 비트코인은 ${btc.get('price', 0):,.2f}선에서 거래되었습니다. 시장 변동성 지표인 VIX는 {vix.get('price', 0):.2f}pt를 기록했습니다.
 
 **[빅테크(M7) 및 주도 섹터 인사이트]**
 {m7_summary if m7_summary else '엔비디아를 비롯한 반도체 및 AI 하드웨어 밸류체인과 소프트웨어 기업 간의 차별화'}가 이어졌습니다. 
@@ -251,12 +253,14 @@ def generate_us_briefing(us_data, is_live=False, time_str=""):
 - 다우존스(Dow): {dow.get('price'):,.2f}pt ({dow.get('ratio', 0):+.2f}%)
 - 러셀 2000: {rut.get('price'):,.2f}pt ({rut.get('ratio', 0):+.2f}%)
 
-
-■ 주요 거시 매크로 지표
+■ 주요 거시 매크로 지표 (7대 지표)
+- 필라델피아 반도체(SOX): {sox.get('price', 0):,.2f}pt
 - 미 국채 10년물 금리: {tnx.get('price', 0):.2f}%
-- VIX 변동성 지수: {vix.get('price', 0):.2f}pt
-- WTI 원유 선물: ${oil.get('price', 0):.2f}
 - 달러 인덱스(DXY): {dxy.get('price', 0):.2f}pt
+- WTI 원유 선물: ${oil.get('price', 0):.2f}
+- 금 선물(Gold): ${gold.get('price', 0):,.2f}
+- 비트코인(BTC): ${btc.get('price', 0):,.2f}
+- VIX 변동성 지수: {vix.get('price', 0):.2f}pt
 
 ■ 핵심 3줄 요약
 1. {bullets[0].replace('**', '')}

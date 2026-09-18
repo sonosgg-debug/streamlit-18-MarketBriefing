@@ -580,9 +580,20 @@ else:
         st.markdown("<div class='section-header'>🌐 글로벌 거시 매크로 지표</div>", unsafe_allow_html=True)
         macro_items = []
         for sym, m in macro.items():
+            unit = m.get('unit', '')
+            price = m.get('price', 0)
+            if unit == '$':
+                cur_val = f"${price:,.2f}"
+            elif unit == '%':
+                cur_val = f"{price:,.2f}%"
+            elif unit:
+                cur_val = f"{price:,.2f} {unit}"
+            else:
+                cur_val = f"{price:,.2f}"
+
             macro_items.append({
                 "지표명": m.get('name'),
-                "현재 수치": f"{m.get('price', 0):,.2f} {m.get('unit', '')}",
+                "현재 수치": cur_val,
                 "변동 폭": f"{m.get('change', 0):+,.2f}",
                 "등락률": f"{m.get('ratio', 0):+.2f}%"
             })
