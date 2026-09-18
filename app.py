@@ -113,7 +113,7 @@ if "KRX" in market_choice:
     st.markdown(
         f"<div class='main-title'>🇰🇷 한국 증시 (KRX) {m_status['title_suffix']}</div>\n"
         f"<div style='text-align: center; color: #94a3b8; font-size: 0.92rem; margin-bottom: 8px;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 실시간 지수, 수급, 주요 일정 큐레이션</div>\n"
-        f"<div style='text-align: center; margin-bottom: 14px;'>{badge_html}</div>",
+        f"<div style='text-align: left; margin-bottom: 14px;'>{badge_html}</div>",
         unsafe_allow_html=True
     )
     st.markdown("---")
@@ -445,7 +445,7 @@ else:
     st.markdown(
         f"<div class='main-title'>🇺🇸 미국 증시 (US) {m_status['title_suffix']}</div>\n"
         f"<div style='text-align: center; color: #94a3b8; font-size: 0.92rem; margin-bottom: 8px;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 지수, 빅테크, 글로벌 매크로 브리핑</div>\n"
-        f"<div style='text-align: center; margin-bottom: 14px;'>{badge_html}</div>",
+        f"<div style='text-align: left; margin-bottom: 14px;'>{badge_html}</div>",
         unsafe_allow_html=True
     )
     st.markdown("---")
