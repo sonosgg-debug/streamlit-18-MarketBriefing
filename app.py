@@ -24,7 +24,6 @@ importlib.reload(calendar_data)
 # 1. 페이지 설정
 st.set_page_config(
     page_title="글로벌 증시 브리핑 | 한국 & 미국",
-    page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
