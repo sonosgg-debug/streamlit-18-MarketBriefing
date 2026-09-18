@@ -60,8 +60,9 @@ CUSTOM_CSS = """
 /* 상단 메인 타이틀 (00 Bookmarks 스타일 일치: #8AB4F8, 여백 및 줄간격 확보) */
 .main-title {
     color: #8AB4F8 !important;
-    font-size: 1.85rem !important;
+    font-size: 1.9rem !important;
     font-weight: 800 !important;
+    text-align: center;
     letter-spacing: -0.5px;
     line-height: 1.4 !important;
     padding-top: 6px !important;

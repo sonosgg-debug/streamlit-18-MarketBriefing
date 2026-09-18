@@ -101,7 +101,7 @@ if "KRX" in market_choice:
     col_t1, col_t2 = st.columns([3, 1])
     with col_t1:
         st.markdown(f"<div class='main-title'>🇰🇷 한국 증시 (KRX) {m_status['title_suffix']}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='color: #94a3b8; font-size: 0.92rem;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 실시간 지수, 수급, 주요 일정 큐레이션</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; color: #94a3b8; font-size: 0.92rem;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 실시간 지수, 수급, 주요 일정 큐레이션</div>", unsafe_allow_html=True)
     with col_t2:
         kp_ratio = data.get('kospi', {}).get('ratio', 0.0)
         action_word = "상승 중" if m_status['is_live'] else "상승 마감"
@@ -432,7 +432,7 @@ else:
     col_t1, col_t2 = st.columns([3, 1])
     with col_t1:
         st.markdown(f"<div class='main-title'>🇺🇸 미국 증시 (US) {m_status['title_suffix']}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='color: #94a3b8; font-size: 0.92rem;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 지수, 빅테크, 글로벌 매크로 브리핑</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; color: #94a3b8; font-size: 0.92rem;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 지수, 빅테크, 글로벌 매크로 브리핑</div>", unsafe_allow_html=True)
     with col_t2:
         indices = data.get('indices', {})
         sp_ratio = indices.get('^GSPC', {}).get('ratio', 0.0)
