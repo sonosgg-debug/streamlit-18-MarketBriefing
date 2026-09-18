@@ -98,24 +98,26 @@ if "KRX" in market_choice:
     events = calendar_data.get_upcoming_events('KRX')
 
     # 타이틀 헤더 (장중 vs 마감 동적 텍스트 적용)
-    col_t1, col_t2 = st.columns([3, 1])
-    with col_t1:
-        st.markdown(f"<div class='main-title'>🇰🇷 한국 증시 (KRX) {m_status['title_suffix']}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='text-align: center; color: #94a3b8; font-size: 0.92rem;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 실시간 지수, 수급, 주요 일정 큐레이션</div>", unsafe_allow_html=True)
-    with col_t2:
-        kp_ratio = data.get('kospi', {}).get('ratio', 0.0)
-        action_word = "상승 중" if m_status['is_live'] else "상승 마감"
-        down_word = "하락 중" if m_status['is_live'] else "하락 마감"
-        flat_word = "보합 거래" if m_status['is_live'] else "보합 마감"
+    kp_ratio = data.get('kospi', {}).get('ratio', 0.0)
+    action_word = "상승 중" if m_status['is_live'] else "상승 마감"
+    down_word = "하락 중" if m_status['is_live'] else "하락 마감"
+    flat_word = "보합 거래" if m_status['is_live'] else "보합 마감"
 
-        if kp_ratio > 0:
-            badge_html = f"<span style='background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.9rem;'>🔴 코스피 {action_word} ({kp_ratio:+.2f}%)</span>"
-        elif kp_ratio < 0:
-            badge_html = f"<span style='background: #172554; color: #93c5fd; border: 1px solid #1e40af; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.9rem;'>🔵 코스피 {down_word} ({kp_ratio:+.2f}%)</span>"
-        else:
-            badge_html = f"<span style='background: #1e293b; color: #cbd5e1; border: 1px solid #475569; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.9rem;'>⚪ 코스피 {flat_word}</span>"
-        st.markdown(f"<div style='text-align: right; padding-top: 10px;'>{badge_html}</div>", unsafe_allow_html=True)
+    if kp_ratio > 0:
+        badge_html = f"<span style='background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;'>🔴 코스피 {action_word} ({kp_ratio:+.2f}%)</span>"
+    elif kp_ratio < 0:
+        badge_html = f"<span style='background: #172554; color: #93c5fd; border: 1px solid #1e40af; padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;'>🔵 코스피 {down_word} ({kp_ratio:+.2f}%)</span>"
+    else:
+        badge_html = f"<span style='background: #1e293b; color: #cbd5e1; border: 1px solid #475569; padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;'>⚪ 코스피 {flat_word}</span>"
 
+    st.markdown(f"<div class='main-title'>🇰🇷 한국 증시 (KRX) {m_status['title_suffix']}</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;'>"
+        f"<span style='color: #94a3b8; font-size: 0.92rem;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 실시간 지수, 수급, 주요 일정 큐레이션</span>"
+        f"{badge_html}"
+        f"</div>",
+        unsafe_allow_html=True
+    )
     st.markdown("---")
 
     # 1. 상단 주요 지표 카드 (KPI - 5개 패널 확장)
@@ -429,25 +431,27 @@ else:
     events = calendar_data.get_upcoming_events('US')
 
     # 타이틀 헤더
-    col_t1, col_t2 = st.columns([3, 1])
-    with col_t1:
-        st.markdown(f"<div class='main-title'>🇺🇸 미국 증시 (US) {m_status['title_suffix']}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='text-align: center; color: #94a3b8; font-size: 0.92rem;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 지수, 빅테크, 글로벌 매크로 브리핑</div>", unsafe_allow_html=True)
-    with col_t2:
-        indices = data.get('indices', {})
-        sp_ratio = indices.get('^GSPC', {}).get('ratio', 0.0)
-        action_word = "상승 중" if m_status['is_live'] else "상승 마감"
-        down_word = "하락 중" if m_status['is_live'] else "하락 마감"
-        flat_word = "혼조 거래" if m_status['is_live'] else "혼조 마감"
+    indices = data.get('indices', {})
+    sp_ratio = indices.get('^GSPC', {}).get('ratio', 0.0)
+    action_word = "상승 중" if m_status['is_live'] else "상승 마감"
+    down_word = "하락 중" if m_status['is_live'] else "하락 마감"
+    flat_word = "혼조 거래" if m_status['is_live'] else "혼조 마감"
 
-        if sp_ratio > 0:
-            badge_html = f"<span style='background: #064e3b; color: #a7f3d0; border: 1px solid #059669; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.9rem;'>🟢 뉴욕 증시 {action_word}</span>"
-        elif sp_ratio < 0:
-            badge_html = f"<span style='background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.9rem;'>🔴 뉴욕 증시 {down_word}</span>"
-        else:
-            badge_html = f"<span style='background: #1e293b; color: #cbd5e1; border: 1px solid #475569; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.9rem;'>⚪ 뉴욕 증시 {flat_word}</span>"
-        st.markdown(f"<div style='text-align: right; padding-top: 10px;'>{badge_html}</div>", unsafe_allow_html=True)
+    if sp_ratio > 0:
+        badge_html = f"<span style='background: #064e3b; color: #a7f3d0; border: 1px solid #059669; padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;'>🟢 뉴욕 증시 {action_word}</span>"
+    elif sp_ratio < 0:
+        badge_html = f"<span style='background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;'>🔴 뉴욕 증시 {down_word}</span>"
+    else:
+        badge_html = f"<span style='background: #1e293b; color: #cbd5e1; border: 1px solid #475569; padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;'>⚪ 뉴욕 증시 {flat_word}</span>"
 
+    st.markdown(f"<div class='main-title'>🇺🇸 미국 증시 (US) {m_status['title_suffix']}</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;'>"
+        f"<span style='color: #94a3b8; font-size: 0.92rem;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 지수, 빅테크, 글로벌 매크로 브리핑</span>"
+        f"{badge_html}"
+        f"</div>",
+        unsafe_allow_html=True
+    )
     st.markdown("---")
 
     # 1. 상단 주요 지표 카드 (KPI - 5개 패널 확장)
