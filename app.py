@@ -104,18 +104,16 @@ if "KRX" in market_choice:
     flat_word = "보합 거래" if m_status['is_live'] else "보합 마감"
 
     if kp_ratio > 0:
-        badge_html = f"<span style='background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;'>🔴 코스피 {action_word} ({kp_ratio:+.2f}%)</span>"
+        badge_html = f"<span style='background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; padding: 5px 14px; border-radius: 20px; font-weight: 700; font-size: 0.88rem; display: inline-block;'>🔴 코스피 {action_word} ({kp_ratio:+.2f}%)</span>"
     elif kp_ratio < 0:
-        badge_html = f"<span style='background: #172554; color: #93c5fd; border: 1px solid #1e40af; padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;'>🔵 코스피 {down_word} ({kp_ratio:+.2f}%)</span>"
+        badge_html = f"<span style='background: #172554; color: #93c5fd; border: 1px solid #1e40af; padding: 5px 14px; border-radius: 20px; font-weight: 700; font-size: 0.88rem; display: inline-block;'>🔵 코스피 {down_word} ({kp_ratio:+.2f}%)</span>"
     else:
-        badge_html = f"<span style='background: #1e293b; color: #cbd5e1; border: 1px solid #475569; padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;'>⚪ 코스피 {flat_word}</span>"
+        badge_html = f"<span style='background: #1e293b; color: #cbd5e1; border: 1px solid #475569; padding: 5px 14px; border-radius: 20px; font-weight: 700; font-size: 0.88rem; display: inline-block;'>⚪ 코스피 {flat_word}</span>"
 
-    st.markdown(f"<div class='main-title'>🇰🇷 한국 증시 (KRX) {m_status['title_suffix']}</div>", unsafe_allow_html=True)
     st.markdown(
-        f"<div style='display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;'>"
-        f"<span style='color: #94a3b8; font-size: 0.92rem;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 실시간 지수, 수급, 주요 일정 큐레이션</span>"
-        f"{badge_html}"
-        f"</div>",
+        f"<div class='main-title'>🇰🇷 한국 증시 (KRX) {m_status['title_suffix']}</div>\n"
+        f"<div style='text-align: center; color: #94a3b8; font-size: 0.92rem; margin-bottom: 8px;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 실시간 지수, 수급, 주요 일정 큐레이션</div>\n"
+        f"<div style='text-align: center; margin-bottom: 14px;'>{badge_html}</div>",
         unsafe_allow_html=True
     )
     st.markdown("---")
@@ -438,18 +436,16 @@ else:
     flat_word = "혼조 거래" if m_status['is_live'] else "혼조 마감"
 
     if sp_ratio > 0:
-        badge_html = f"<span style='background: #064e3b; color: #a7f3d0; border: 1px solid #059669; padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;'>🟢 뉴욕 증시 {action_word}</span>"
+        badge_html = f"<span style='background: #064e3b; color: #a7f3d0; border: 1px solid #059669; padding: 5px 14px; border-radius: 20px; font-weight: 700; font-size: 0.88rem; display: inline-block;'>🟢 뉴욕 증시 {action_word}</span>"
     elif sp_ratio < 0:
-        badge_html = f"<span style='background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;'>🔴 뉴욕 증시 {down_word}</span>"
+        badge_html = f"<span style='background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; padding: 5px 14px; border-radius: 20px; font-weight: 700; font-size: 0.88rem; display: inline-block;'>🔴 뉴욕 증시 {down_word}</span>"
     else:
-        badge_html = f"<span style='background: #1e293b; color: #cbd5e1; border: 1px solid #475569; padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;'>⚪ 뉴욕 증시 {flat_word}</span>"
+        badge_html = f"<span style='background: #1e293b; color: #cbd5e1; border: 1px solid #475569; padding: 5px 14px; border-radius: 20px; font-weight: 700; font-size: 0.88rem; display: inline-block;'>⚪ 뉴욕 증시 {flat_word}</span>"
 
-    st.markdown(f"<div class='main-title'>🇺🇸 미국 증시 (US) {m_status['title_suffix']}</div>", unsafe_allow_html=True)
     st.markdown(
-        f"<div style='display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;'>"
-        f"<span style='color: #94a3b8; font-size: 0.92rem;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 지수, 빅테크, 글로벌 매크로 브리핑</span>"
-        f"{badge_html}"
-        f"</div>",
+        f"<div class='main-title'>🇺🇸 미국 증시 (US) {m_status['title_suffix']}</div>\n"
+        f"<div style='text-align: center; color: #94a3b8; font-size: 0.92rem; margin-bottom: 8px;'>📅 <b>기준 일시:</b> {m_status['time_str']} | 지수, 빅테크, 글로벌 매크로 브리핑</div>\n"
+        f"<div style='text-align: center; margin-bottom: 14px;'>{badge_html}</div>",
         unsafe_allow_html=True
     )
     st.markdown("---")
