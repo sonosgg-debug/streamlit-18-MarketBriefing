@@ -16,7 +16,7 @@ CUSTOM_CSS = """
 .main .block-container,
 [data-testid="stMainBlockContainer"],
 .block-container {
-    padding-top: 3.5rem !important;
+    padding-top: 2.0rem !important;
     padding-bottom: 2.5rem;
     padding-left: 2.5rem;
     padding-right: 2.5rem;
@@ -60,7 +60,7 @@ CUSTOM_CSS = """
 /* 상단 메인 타이틀 (00 Bookmarks 스타일 일치: #8AB4F8, 여백 및 줄간격 확보) */
 .main-title {
     color: #8AB4F8 !important;
-    font-size: 1.9rem !important;
+    font-size: 2.0rem !important;
     font-weight: 800 !important;
     text-align: center;
     letter-spacing: -0.5px;
@@ -518,6 +518,44 @@ section[data-testid="stSidebar"] {
         border: 1px solid #475569;
     }
 
+    
+    /* =========================================================
+       사이드바 접기(<<) 및 펼치기(>>) 버튼 항상 표시 및 시인성/대비 강화
+       ========================================================= */
+    /* 1. 사이드바가 열려 있을 때 접기 버튼 (<<) 상시 표시 */
+    [data-testid="stSidebarCollapseButton"] {
+        visibility: visible !important;
+        opacity: 1 !important;
+        display: inline-flex !important;
+    }
+    
+    [data-testid="stSidebarCollapseButton"] button {
+        visibility: visible !important;
+        opacity: 1 !important;
+        background-color: #1e293b !important;       /* 진한 네이비 배경 */
+        border: 1.5px solid #38bdf8 !important;     /* 선명한 스카이블루 테두리로 상자 명확화 */
+        border-radius: 8px !important;
+        width: 38px !important;
+        height: 38px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 6px rgba(56, 189, 248, 0.2) !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    /* 상자 내부의 << 아이콘(Material Icon span/svg/문자)을 순백색으로 강제하여 상자와 극명한 대비 구현 */
+    [data-testid="stSidebarCollapseButton"] button *,
+    [data-testid="stSidebarCollapseButton"] span,
+    [data-testid="stSidebarCollapseButton"] [data-testid="stIconMaterial"],
+    [data-testid="stSidebarCollapseButton"] svg {
+        color: #ffffff !important;
+        fill: #ffffff !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        font-size: 1.35rem !important;
+        font-weight: 700 !important;
+    }
     
     /* 호버(PC) 및 터치 시 반전 효과 */
     [data-testid="stSidebarCollapseButton"] button:hover {

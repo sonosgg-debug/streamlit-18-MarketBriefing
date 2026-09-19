@@ -83,7 +83,7 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     
     # 새로고침 버튼
-    if st.button("🔄 실시간 데이터 새로고침", use_container_width=True):
+    if st.button("🔄 Update", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
@@ -651,3 +651,4 @@ else:
 # 푸터
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: #64748b; font-size: 0.85rem;'>© 2026 글로벌 증시 브리핑 대시보드 | Real-time & Closing Intelligence</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: #64748b; font-size: 0.8rem; margin-top: 8px; margin-bottom: 24px; line-height: 1.6;'>⚠️ 본 서비스에서 제공하는 모든 정보는 투자 참고용이며, 투자의 최종 결정과 책임은 투자자 본인에게 있습니다.</div>", unsafe_allow_html=True)
