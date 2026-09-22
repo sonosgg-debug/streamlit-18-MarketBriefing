@@ -476,11 +476,12 @@ def fetch_market_breadth():
     return breadth
 
 
-def fetch_top_stocks():
+def fetch_top_stocks(cur_m_status, today_iso):
     """KOSPI 시총 상위 대표 종목들 (당일 실시간 & 전일 마감 확정)"""
     top_stocks = []
     top_stocks_prev = []
     top_stocks_prev_date = ''
+    is_pre_market = cur_m_status.get('status') == 'PRE_MARKET'
 
     try:
         res = requests.get('https://m.stock.naver.com/api/stocks/marketValue/KOSPI?page=1&pageSize=6', headers=HEADERS, timeout=4)
@@ -488,13 +489,29 @@ def fetch_top_stocks():
             stocks = res.json().get('stocks', [])
             for st in stocks:
                 p_code = st.get('compareToPreviousPrice', {}).get('code', '3')
+                price = clean_float(st.get('closePrice'))
+                change = clean_float(st.get('compareToPreviousClosePrice'))
+                ratio = clean_float(st.get('fluctuationsRatio'))
+
+                # 개장 전(PRE_MARKET)에는 당일 정규장 거래가 시작되지 않았으므로
+                # 현재가는 전일 종가(기준가)이며, 당일 전일대비와 등락률은 0.0으로 표기
+                if is_pre_market:
+                    chg_val = 0.0
+                    rat_val = 0.0
+                    direction = 'FLAT'
+                else:
+                    chg_val = change
+                    rat_val = ratio
+                    direction = 'UP' if p_code in ['2', '1'] else ('DOWN' if p_code in ['5', '4'] else 'FLAT')
+
                 top_stocks.append({
                     'name': st.get('stockName'),
                     'code': st.get('itemCode'),
-                    'price': clean_float(st.get('closePrice')),
-                    'change': clean_float(st.get('compareToPreviousClosePrice')),
-                    'ratio': clean_float(st.get('fluctuationsRatio')),
-                    'direction': 'UP' if p_code in ['2', '1'] else ('DOWN' if p_code in ['5', '4'] else 'FLAT')
+                    'price': price,
+                    'change': chg_val,
+                    'ratio': rat_val,
+                    'direction': direction,
+                    'is_live': not is_pre_market
                 })
 
             def fetch_prev_stock_price(stock_item):
@@ -504,12 +521,26 @@ def fetch_top_stocks():
                     r = requests.get(f'https://m.stock.naver.com/api/stock/{code}/price', headers=HEADERS, timeout=3)
                     if r.status_code == 200:
                         items = r.json()
-                        if len(items) > 1:
-                            prev = items[1]
+                        if items:
+                            # 첫 번째 항목이 오늘(장중 체결)이면 직전 마감은 items[1], 개장 전이거나 오늘 데이터가 없으면 items[0]
+                            if items[0].get('localTradedAt') == today_iso and len(items) > 1:
+                                prev = items[1]
+                            else:
+                                prev = items[0]
+
                             pr_code = prev.get('compareToPreviousPrice', {}).get('code', '3')
-                            sign = 1 if pr_code in ['2', '1'] else (-1 if pr_code in ['5', '4'] else 0)
-                            chg = clean_float(prev.get('compareToPreviousClosePrice', 0)) * sign
-                            ratio = clean_float(prev.get('fluctuationsRatio', 0)) * sign
+                            chg = clean_float(prev.get('compareToPreviousClosePrice', 0))
+                            ratio = clean_float(prev.get('fluctuationsRatio', 0))
+                            if pr_code in ['5', '4']:
+                                chg = -abs(chg)
+                                ratio = -abs(ratio)
+                                direction = 'DOWN'
+                            elif pr_code in ['2', '1']:
+                                chg = abs(chg)
+                                ratio = abs(ratio)
+                                direction = 'UP'
+                            else:
+                                direction = 'FLAT'
                             return {
                                 'name': name,
                                 'code': code,
@@ -517,7 +548,7 @@ def fetch_top_stocks():
                                 'price': clean_float(prev.get('closePrice')),
                                 'change': chg,
                                 'ratio': ratio,
-                                'direction': 'UP' if sign > 0 else ('DOWN' if sign < 0 else 'FLAT')
+                                'direction': direction
                             }
                 except Exception:
                     pass
@@ -547,6 +578,7 @@ def get_krx_summary():
     """
     cur_m_status = get_market_status('KRX')
     today_str = get_now_kst().strftime('%Y%m%d')
+    today_iso = get_now_kst().strftime('%Y-%m-%d')
 
     result = {
         'market': 'KRX',
@@ -579,7 +611,7 @@ def get_krx_summary():
         f_prog = executor.submit(fetch_program_trading, cur_m_status, today_str)
         f_fx = executor.submit(fetch_exchange_rate)
         f_breadth = executor.submit(fetch_market_breadth)
-        f_stocks = executor.submit(fetch_top_stocks)
+        f_stocks = executor.submit(fetch_top_stocks, cur_m_status, today_iso)
 
         result['kospi'] = f_kp_price.result()
         result['kosdaq'] = f_kd_price.result()

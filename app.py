@@ -358,19 +358,23 @@ if "KRX" in market_choice:
 
         with tab_st_live:
             top_stocks = data.get('top_stocks', [])
-            if m_status.get('status') == 'PRE_MARKET':
-                st.caption(f"📅 **현재 시각**: {m_status.get('current_time_str', '')} | ⏳ **개장 전 대기**: 09:00 정규장 개장 후 실시간 체결 시세가 반영됩니다.")
+            is_pre = m_status.get('status') == 'PRE_MARKET'
+            if is_pre:
+                st.caption(f"📅 **현재 시각**: {m_status.get('current_time_str', '')} | ⏳ **개장 전 대기**: 09:00 정규장 개장 전으로 당일 등락률은 0% (기준가: 직전일 종가)로 표시됩니다.")
             else:
                 st.caption(f"📅 **집계 기준**: {m_status.get('current_time_str', '')} | 💡 실시간 정규장 체결 기준")
 
             if top_stocks:
                 stock_data = []
                 for s in top_stocks:
+                    price_header = "기준가(원)" if is_pre else "현재가(원)"
+                    chg_display = "0" if is_pre else f"{s.get('change', 0):+,.0f}"
+                    ratio_display = "0.00% (대기)" if is_pre else f"{s.get('ratio', 0):+.2f}%"
                     stock_data.append({
                         "종목명": s.get('name'),
-                        "현재가(원)": f"{s.get('price', 0):,.0f}",
-                        "전일대비": f"{s.get('change', 0):+,.0f}",
-                        "등락률": f"{s.get('ratio', 0):+.2f}%"
+                        price_header: f"{s.get('price', 0):,.0f}",
+                        "전일대비": chg_display,
+                        "등락률": ratio_display
                     })
                 df_st = pd.DataFrame(stock_data)
                 st.dataframe(df_st, use_container_width=True, hide_index=True)
