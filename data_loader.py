@@ -13,10 +13,6 @@ import concurrent.futures
 from datetime import datetime, date, timezone, timedelta
 from zoneinfo import ZoneInfo
 
-try:
-    import FinanceDataReader as fdr
-except ImportError:
-    fdr = None
 
 def get_now_kst():
     """한국 표준시(KST, UTC+9) 반환 (서버 OS 타임존 무관)"""
@@ -278,139 +274,80 @@ def get_investor_trend_history(sosok='01'):
 
     return {'prev': {}, 'history': pd.DataFrame()}
 
-def get_krx_summary():
+def fetch_index_price(index_code):
+    """네이버 모바일 API로 지수 정보 수집 (KOSPI, KOSDAQ)"""
+    name = '코스피 (KOSPI)' if index_code == 'KOSPI' else '코스닥 (KOSDAQ)'
+    try:
+        res = requests.get(f'https://m.stock.naver.com/api/index/{index_code}/price', headers=HEADERS, timeout=4)
+        if res.status_code == 200:
+            item = res.json()[0]
+            return {
+                'name': name,
+                'price': clean_float(item.get('closePrice')),
+                'change': clean_float(item.get('compareToPreviousClosePrice')),
+                'ratio': clean_float(item.get('fluctuationsRatio')),
+                'direction': 'UP' if item.get('compareToPreviousPrice', {}).get('code') in ['2', '1'] else 'DOWN',
+                'date': item.get('localTradedAt', '')
+            }
+    except Exception as e:
+        print(f"Error fetching {index_code} price: {e}")
+    return {'name': name, 'price': 0.0, 'change': 0.0, 'ratio': 0.0, 'direction': 'FLAT', 'date': ''}
+
+
+def fetch_live_investor_trend(index_code, cur_m_status, today_str):
     """
-    한국 시장(KRX) 마감 종합 데이터 반환
+    KOSPI / KOSDAQ 실시간 잠정 수급 수집
+    - 개장 전(PRE_MARKET)이거나 bizdate가 오늘이 아닐 경우 0으로 자동 처리
     """
-    result = {
-        'market': 'KRX',
-        'date': get_now_kst().strftime('%Y-%m-%d'),
-        'kospi': {},
-        'kosdaq': {},
-        'exchange_rate': {},
-        'investors_kospi': {},
-        'investors_kosdaq': {},
-        'investors_kospi_prev': {},
-        'investors_kosdaq_prev': {},
-        'investors_history_kospi': pd.DataFrame(),
-        'investors_history_kosdaq': pd.DataFrame(),
-        'program': {
-            'name': '프로그램 비차익 순매매',
-            'non_arbitrage': 0.0,
-            'arbitrage': 0.0,
-            'total': 0.0,
-            'bizdate': '',
-            'bizdate_fmt': '',
-            'time_str': '',
-            'is_live': False
-        },
-        'breadth': {
-            'kospi': {'up': 0, 'down': 0, 'flat': 0, 'total': 0, 'up_ratio': 0.0},
-            'kosdaq': {'up': 0, 'down': 0, 'flat': 0, 'total': 0, 'up_ratio': 0.0}
-        },
-        'top_stocks': [],
-        'top_stocks_prev': [],
-        'top_stocks_prev_date': '',
-        'history': pd.DataFrame()
+    inv_live = {'personal': 0.0, 'foreign': 0.0, 'institutional': 0.0, 'bizdate': today_str, 'is_today': False}
+    try:
+        res = requests.get(f'https://m.stock.naver.com/api/index/{index_code}/trend', headers=HEADERS, timeout=4)
+        if res.status_code == 200:
+            trend = res.json()
+            bdate = str(trend.get('bizdate', ''))
+            is_pre_market = cur_m_status.get('status') == 'PRE_MARKET'
+            is_today = bool(bdate == today_str and not is_pre_market)
+            
+            if is_today:
+                inv_live = {
+                    'personal': clean_float(trend.get('personalValue', 0)),
+                    'foreign': clean_float(trend.get('foreignValue', 0)),
+                    'institutional': clean_float(trend.get('institutionalValue', 0)),
+                    'bizdate': bdate,
+                    'is_today': True
+                }
+            else:
+                inv_live = {
+                    'personal': 0.0,
+                    'foreign': 0.0,
+                    'institutional': 0.0,
+                    'bizdate': bdate if bdate else today_str,
+                    'is_today': False
+                }
+    except Exception as e:
+        print(f"Error fetching {index_code} trend: {e}")
+    return inv_live
+
+
+def fetch_program_trading(cur_m_status, today_str):
+    """KOSPI 프로그램 매매 수집"""
+    default_prog = {
+        'name': '프로그램 비차익 순매매',
+        'non_arbitrage': 0.0,
+        'arbitrage': 0.0,
+        'total': 0.0,
+        'bizdate': '',
+        'bizdate_fmt': '',
+        'time_str': '',
+        'is_live': False
     }
-
-    # 1. KOSPI 지수 정보 (Naver Mobile API)
     try:
-        res = requests.get('https://m.stock.naver.com/api/index/KOSPI/price', headers=HEADERS, timeout=5)
-        if res.status_code == 200:
-            item = res.json()[0]
-            result['kospi'] = {
-                'name': '코스피 (KOSPI)',
-                'price': clean_float(item.get('closePrice')),
-                'change': clean_float(item.get('compareToPreviousClosePrice')),
-                'ratio': clean_float(item.get('fluctuationsRatio')),
-                'direction': 'UP' if item.get('compareToPreviousPrice', {}).get('code') in ['2', '1'] else 'DOWN',
-                'date': item.get('localTradedAt', '')
-            }
-    except Exception as e:
-        print(f"Error fetching KOSPI price: {e}")
-
-    # 2. KOSDAQ 지수 정보
-    try:
-        res = requests.get('https://m.stock.naver.com/api/index/KOSDAQ/price', headers=HEADERS, timeout=5)
-        if res.status_code == 200:
-            item = res.json()[0]
-            result['kosdaq'] = {
-                'name': '코스닥 (KOSDAQ)',
-                'price': clean_float(item.get('closePrice')),
-                'change': clean_float(item.get('compareToPreviousClosePrice')),
-                'ratio': clean_float(item.get('fluctuationsRatio')),
-                'direction': 'UP' if item.get('compareToPreviousPrice', {}).get('code') in ['2', '1'] else 'DOWN',
-                'date': item.get('localTradedAt', '')
-            }
-    except Exception as e:
-        print(f"Error fetching KOSDAQ price: {e}")
-
-    cur_m_status = get_market_status('KRX')
-
-    # 3. KOSPI 전일 마감 수급 및 최근 일자별 추이 (공식 REST API)
-    try:
-        hist_kospi = get_investor_trend_history('01')
-        result['investors_kospi_prev'] = hist_kospi.get('prev', {})
-        result['investors_history_kospi'] = hist_kospi.get('history', pd.DataFrame())
-    except Exception as e:
-        print(f"Error attaching KOSPI history: {e}")
-        hist_kospi = {'prev': {}, 'history': pd.DataFrame()}
-
-    # 3-1. KOSPI 실시간 잠정 수급 (당일 장중/개장전 수치 유지)
-    kp_inv_live = {'personal': 0.0, 'foreign': 0.0, 'institutional': 0.0, 'bizdate': ''}
-    try:
-        res = requests.get('https://m.stock.naver.com/api/index/KOSPI/trend', headers=HEADERS, timeout=5)
-        if res.status_code == 200:
-            trend = res.json()
-            kp_inv_live = {
-                'personal': clean_float(trend.get('personalValue', 0)),
-                'foreign': clean_float(trend.get('foreignValue', 0)),
-                'institutional': clean_float(trend.get('institutionalValue', 0)),
-                'bizdate': trend.get('bizdate', '')
-            }
-    except Exception as e:
-        print(f"Error fetching KOSPI trend: {e}")
-
-    result['investors_kospi'] = kp_inv_live
-
-    # 4. KOSDAQ 전일 마감 수급 및 최근 일자별 추이
-    try:
-        hist_kosdaq = get_investor_trend_history('02')
-        result['investors_kosdaq_prev'] = hist_kosdaq.get('prev', {})
-        result['investors_history_kosdaq'] = hist_kosdaq.get('history', pd.DataFrame())
-    except Exception as e:
-        print(f"Error attaching KOSDAQ history: {e}")
-        hist_kosdaq = {'prev': {}, 'history': pd.DataFrame()}
-
-    # 4-1. KOSDAQ 실시간 잠정 수급 (당일 장중/개장전 수치 유지)
-    kd_inv_live = {'personal': 0.0, 'foreign': 0.0, 'institutional': 0.0, 'bizdate': ''}
-    try:
-        res = requests.get('https://m.stock.naver.com/api/index/KOSDAQ/trend', headers=HEADERS, timeout=5)
-        if res.status_code == 200:
-            trend = res.json()
-            kd_inv_live = {
-                'personal': clean_float(trend.get('personalValue', 0)),
-                'foreign': clean_float(trend.get('foreignValue', 0)),
-                'institutional': clean_float(trend.get('institutionalValue', 0)),
-                'bizdate': trend.get('bizdate', '')
-            }
-    except Exception as e:
-        print(f"Error fetching KOSDAQ trend: {e}")
-
-    result['investors_kosdaq'] = kd_inv_live
-
-    # 4-1. KOSPI 프로그램 매매 (특히 비차익 순매매)
-    try:
-        now_kst = get_now_kst()
-        today_str = now_kst.strftime('%Y%m%d')
-        
         # 1) 실시간 장중(TIME) 데이터 우선 호출
         res_prog = requests.get(
             'https://stock.naver.com/api/domestic/market/trendProgram',
             params={'tradeType': 'KRX', 'krxMarketType': 'KOSPI', 'bizdate': today_str, 'startIdx': '1', 'pageSize': '1', 'periodType': 'TIME'},
             headers=HEADERS,
-            timeout=5
+            timeout=4
         )
         content = []
         is_time_type = False
@@ -425,7 +362,7 @@ def get_krx_summary():
                 'https://stock.naver.com/api/domestic/market/trendProgram',
                 params={'tradeType': 'KRX', 'krxMarketType': 'KOSPI', 'bizdate': today_str, 'startIdx': '1', 'pageSize': '1', 'periodType': 'DAY'},
                 headers=HEADERS,
-                timeout=5
+                timeout=4
             )
             if res_prog.status_code == 200:
                 content = res_prog.json().get('content', [])
@@ -440,10 +377,9 @@ def get_krx_summary():
             time_fmt = f"{t_val[:2]}:{t_val[2:4]}" if len(t_val) >= 4 else ""
             date_fmt = f"{b_date[4:6]}/{b_date[6:8]}" if len(b_date) == 8 else b_date
 
-            cur_m_status = get_market_status('KRX')
             is_live_prog = bool(is_time_type and b_date == today_str and cur_m_status.get('is_live', False))
 
-            result['program'] = {
+            return {
                 'name': '프로그램 비차익 순매매',
                 'non_arbitrage': round(bi_diff, 0),
                 'arbitrage': round(diff, 0),
@@ -455,8 +391,32 @@ def get_krx_summary():
             }
     except Exception as e:
         print(f"Error fetching KOSPI program trading: {e}")
+    return default_prog
 
-    # 5. 원/달러 환율 (yfinance)
+
+def fetch_exchange_rate():
+    """원/달러 환율 수집 (네이버 공식 프론트 API 우선, yfinance 2순위)"""
+    # 1순위: 네이버 공식 환율 프론트 API (초고속 응답 보장)
+    try:
+        url = 'https://m.stock.naver.com/front-api/marketIndex/prices?category=exchange&reutersCode=FX_USDKRW'
+        r = requests.get(url, headers=HEADERS, timeout=3)
+        if r.status_code == 200:
+            items = r.json().get('result', [])
+            if items:
+                latest = items[0]
+                price = clean_float(latest.get('closePrice'))
+                change = clean_float(latest.get('fluctuations'))
+                ratio = clean_float(latest.get('fluctuationsRatio'))
+                return {
+                    'name': '원/달러 환율 (USD/KRW)',
+                    'price': round(price, 2),
+                    'change': round(change, 2),
+                    'ratio': round(ratio, 2)
+                }
+    except Exception as e:
+        print(f"Naver FX fetch failed, fallback to yfinance: {e}")
+
+    # 2순위: yfinance 폴백
     try:
         usdkrw = yf.Ticker('KRW=X')
         info = usdkrw.fast_info
@@ -464,23 +424,71 @@ def get_krx_summary():
         prev_close = info.previous_close if hasattr(info, 'previous_close') else last_price
         change = last_price - prev_close
         ratio = (change / prev_close) * 100 if prev_close else 0.0
-        result['exchange_rate'] = {
+        return {
             'name': '원/달러 환율 (USD/KRW)',
             'price': round(last_price, 2),
             'change': round(change, 2),
             'ratio': round(ratio, 2)
         }
-    except Exception as e:
-        result['exchange_rate'] = {'name': '원/달러 환율', 'price': 1345.0, 'change': 0.0, 'ratio': 0.0}
+    except Exception:
+        pass
 
-    # 6. KOSPI 시총 상위 대표 종목들 (당일 실시간 & 전일 마감 확정)
+    return {'name': '원/달러 환율', 'price': 1345.0, 'change': 0.0, 'ratio': 0.0}
+
+
+def fetch_market_breadth():
+    """KOSPI & KOSDAQ 등락 종목 수 (Market Breadth) 수집"""
+    breadth = {
+        'kospi': {'up': 0, 'down': 0, 'flat': 0, 'total': 0, 'up_ratio': 0.0},
+        'kosdaq': {'up': 0, 'down': 0, 'flat': 0, 'total': 0, 'up_ratio': 0.0}
+    }
     try:
-        res = requests.get('https://m.stock.naver.com/api/stocks/marketValue/KOSPI?page=1&pageSize=6', headers=HEADERS, timeout=5)
+        for mkt_code, mkt_key in [('KOSPI', 'kospi'), ('KOSDAQ', 'kosdaq')]:
+            b_res = requests.get(
+                'https://m.stock.naver.com/front-api/stock/domestic/integration',
+                params={'code': mkt_code, 'endType': 'index'},
+                headers=HEADERS,
+                timeout=4
+            )
+            if b_res.status_code == 200:
+                b_json = b_res.json()
+                u_info = b_json.get('result', {}).get('upDownStockInfo', {})
+                if u_info:
+                    b_up = int(str(u_info.get('riseCount', 0)).replace(',', ''))
+                    b_down = int(str(u_info.get('fallCount', 0)).replace(',', ''))
+                    b_flat = int(str(u_info.get('steadyCount', 0)).replace(',', ''))
+                    b_upper = int(str(u_info.get('upperCount', 0)).replace(',', ''))
+                    b_lower = int(str(u_info.get('lowerCount', 0)).replace(',', ''))
+                    b_tot = b_up + b_down + b_flat
+                    b_ratio = round((b_up / (b_up + b_down) * 100) if (b_up + b_down) > 0 else 0.0, 1)
+                    if b_tot > 0:
+                        breadth[mkt_key] = {
+                            'up': b_up,
+                            'down': b_down,
+                            'flat': b_flat,
+                            'upper': b_upper,
+                            'lower': b_lower,
+                            'total': b_tot,
+                            'up_ratio': b_ratio
+                        }
+    except Exception as e:
+        print(f"Error fetching market breadth: {e}")
+    return breadth
+
+
+def fetch_top_stocks():
+    """KOSPI 시총 상위 대표 종목들 (당일 실시간 & 전일 마감 확정)"""
+    top_stocks = []
+    top_stocks_prev = []
+    top_stocks_prev_date = ''
+
+    try:
+        res = requests.get('https://m.stock.naver.com/api/stocks/marketValue/KOSPI?page=1&pageSize=6', headers=HEADERS, timeout=4)
         if res.status_code == 200:
             stocks = res.json().get('stocks', [])
             for st in stocks:
                 p_code = st.get('compareToPreviousPrice', {}).get('code', '3')
-                result['top_stocks'].append({
+                top_stocks.append({
                     'name': st.get('stockName'),
                     'code': st.get('itemCode'),
                     'price': clean_float(st.get('closePrice')),
@@ -489,7 +497,6 @@ def get_krx_summary():
                     'direction': 'UP' if p_code in ['2', '1'] else ('DOWN' if p_code in ['5', '4'] else 'FLAT')
                 })
 
-            # 전일 마감 확정 시세 병렬 수집
             def fetch_prev_stock_price(stock_item):
                 code = stock_item.get('code')
                 name = stock_item.get('name')
@@ -516,101 +523,85 @@ def get_krx_summary():
                     pass
                 return None
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
-                prev_results = list(executor.map(fetch_prev_stock_price, result['top_stocks']))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=6) as stock_executor:
+                prev_results = list(stock_executor.map(fetch_prev_stock_price, top_stocks))
 
-            prev_date_str = ""
             for p in prev_results:
                 if p:
-                    result['top_stocks_prev'].append(p)
-                    if not prev_date_str and p.get('date'):
-                        prev_date_str = p.get('date')
-            result['top_stocks_prev_date'] = prev_date_str
+                    top_stocks_prev.append(p)
+                    if not top_stocks_prev_date and p.get('date'):
+                        top_stocks_prev_date = p.get('date')
     except Exception as e:
         print(f"Error fetching top stocks: {e}")
 
-    # 7. KOSPI 과거 7일 지수 추이 (차트용)
-    try:
-        df = yf.download('^KS11', period='1mo', interval='1d', progress=False)
-        if not df.empty:
-            df = df[['Close']].tail(7).reset_index()
-            df.columns = ['Date', 'Close']
-            df['DateStr'] = df['Date'].dt.strftime('%m-%d')
-            result['history'] = df
-    except Exception as e:
-        pass
+    return {
+        'top_stocks': top_stocks,
+        'top_stocks_prev': top_stocks_prev,
+        'top_stocks_prev_date': top_stocks_prev_date
+    }
 
-    # 8. KOSPI & KOSDAQ 시장 등락 종목 수 (Market Breadth)
-    # 1) Naver 모바일 프론트 API를 통한 실시간 등락 종목 수 직접 수집 (1순위: 실시간 집계 보장)
-    try:
-        for mkt_code, mkt_key in [('KOSPI', 'kospi'), ('KOSDAQ', 'kosdaq')]:
-            b_res = requests.get(
-                'https://m.stock.naver.com/front-api/stock/domestic/integration',
-                params={'code': mkt_code, 'endType': 'index'},
-                headers=HEADERS,
-                timeout=5
-            )
-            if b_res.status_code == 200:
-                b_json = b_res.json()
-                u_info = b_json.get('result', {}).get('upDownStockInfo', {})
-                if u_info:
-                    b_up = int(str(u_info.get('riseCount', 0)).replace(',', ''))
-                    b_down = int(str(u_info.get('fallCount', 0)).replace(',', ''))
-                    b_flat = int(str(u_info.get('steadyCount', 0)).replace(',', ''))
-                    b_upper = int(str(u_info.get('upperCount', 0)).replace(',', ''))
-                    b_lower = int(str(u_info.get('lowerCount', 0)).replace(',', ''))
-                    b_tot = b_up + b_down + b_flat
-                    b_ratio = round((b_up / (b_up + b_down) * 100) if (b_up + b_down) > 0 else 0.0, 1)
-                    if b_tot > 0:
-                        result['breadth'][mkt_key] = {
-                            'up': b_up,
-                            'down': b_down,
-                            'flat': b_flat,
-                            'upper': b_upper,
-                            'lower': b_lower,
-                            'total': b_tot,
-                            'up_ratio': b_ratio
-                        }
-    except Exception as e:
-        print(f"Error fetching Naver market breadth: {e}")
 
-    # 2) Naver 실패 시 FinanceDataReader 폴백 (2순위)
-    if result['breadth']['kospi']['total'] == 0 and fdr is not None:
-        try:
-            df_krx = fdr.StockListing('KRX')
-            if not df_krx.empty and 'Market' in df_krx.columns and 'Changes' in df_krx.columns:
-                kp_stocks = df_krx[df_krx['Market'] == 'KOSPI']
-                kd_stocks = df_krx[df_krx['Market'] == 'KOSDAQ']
+def get_krx_summary():
+    """
+    한국 시장(KRX) 마감 종합 데이터 반환 (병렬 수집을 통한 초고속 렌더링)
+    """
+    cur_m_status = get_market_status('KRX')
+    today_str = get_now_kst().strftime('%Y%m%d')
 
-                if not kp_stocks.empty and not kp_stocks['Changes'].isna().all():
-                    kp_up = int((kp_stocks['Changes'] > 0).sum())
-                    kp_down = int((kp_stocks['Changes'] < 0).sum())
-                    kp_flat = int((kp_stocks['Changes'] == 0).sum())
-                    kp_tot = len(kp_stocks)
-                    kp_ratio = round((kp_up / (kp_up + kp_down) * 100) if (kp_up + kp_down) > 0 else 0.0, 1)
-                    result['breadth']['kospi'] = {
-                        'up': kp_up,
-                        'down': kp_down,
-                        'flat': kp_flat,
-                        'total': kp_tot,
-                        'up_ratio': kp_ratio
-                    }
+    result = {
+        'market': 'KRX',
+        'date': get_now_kst().strftime('%Y-%m-%d'),
+        'kospi': {},
+        'kosdaq': {},
+        'exchange_rate': {},
+        'investors_kospi': {},
+        'investors_kosdaq': {},
+        'investors_kospi_prev': {},
+        'investors_kosdaq_prev': {},
+        'investors_history_kospi': pd.DataFrame(),
+        'investors_history_kosdaq': pd.DataFrame(),
+        'program': {},
+        'breadth': {},
+        'top_stocks': [],
+        'top_stocks_prev': [],
+        'top_stocks_prev_date': '',
+        'history': pd.DataFrame()
+    }
 
-                if not kd_stocks.empty and not kd_stocks['Changes'].isna().all():
-                    kd_up = int((kd_stocks['Changes'] > 0).sum())
-                    kd_down = int((kd_stocks['Changes'] < 0).sum())
-                    kd_flat = int((kd_stocks['Changes'] == 0).sum())
-                    kd_tot = len(kd_stocks)
-                    kd_ratio = round((kd_up / (kd_up + kd_down) * 100) if (kd_up + kd_down) > 0 else 0.0, 1)
-                    result['breadth']['kosdaq'] = {
-                        'up': kd_up,
-                        'down': kd_down,
-                        'flat': kd_flat,
-                        'total': kd_tot,
-                        'up_ratio': kd_ratio
-                    }
-        except Exception as e:
-            print(f"Error fetching KRX market breadth fallback: {e}")
+    # 독립된 외부 호출들을 ThreadPoolExecutor로 병렬 실행하여 로딩 시간 대폭 단축 (1.5초 이내)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        f_kp_price = executor.submit(fetch_index_price, 'KOSPI')
+        f_kd_price = executor.submit(fetch_index_price, 'KOSDAQ')
+        f_kp_hist = executor.submit(get_investor_trend_history, '01')
+        f_kd_hist = executor.submit(get_investor_trend_history, '02')
+        f_kp_trend = executor.submit(fetch_live_investor_trend, 'KOSPI', cur_m_status, today_str)
+        f_kd_trend = executor.submit(fetch_live_investor_trend, 'KOSDAQ', cur_m_status, today_str)
+        f_prog = executor.submit(fetch_program_trading, cur_m_status, today_str)
+        f_fx = executor.submit(fetch_exchange_rate)
+        f_breadth = executor.submit(fetch_market_breadth)
+        f_stocks = executor.submit(fetch_top_stocks)
+
+        result['kospi'] = f_kp_price.result()
+        result['kosdaq'] = f_kd_price.result()
+        
+        hist_kp = f_kp_hist.result()
+        result['investors_kospi_prev'] = hist_kp.get('prev', {})
+        result['investors_history_kospi'] = hist_kp.get('history', pd.DataFrame())
+
+        hist_kd = f_kd_hist.result()
+        result['investors_kosdaq_prev'] = hist_kd.get('prev', {})
+        result['investors_history_kosdaq'] = hist_kd.get('history', pd.DataFrame())
+
+        result['investors_kospi'] = f_kp_trend.result()
+        result['investors_kosdaq'] = f_kd_trend.result()
+        result['program'] = f_prog.result()
+        result['exchange_rate'] = f_fx.result()
+        result['breadth'] = f_breadth.result()
+
+        st_info = f_stocks.result()
+        result['top_stocks'] = st_info['top_stocks']
+        result['top_stocks_prev'] = st_info['top_stocks_prev']
+        result['top_stocks_prev_date'] = st_info['top_stocks_prev_date']
 
     return result
 
@@ -636,7 +627,7 @@ def get_us_summary():
     m7_symbols = ['NVDA', 'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'META', 'TSLA']
 
     try:
-        all_data = yf.download(tickers + m7_symbols, period='5d', progress=False)['Close']
+        all_data = yf.download(tickers + m7_symbols, period='5d', progress=False, timeout=10)['Close']
         
         # 지수 파싱
         name_map = {

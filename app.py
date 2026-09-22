@@ -15,10 +15,6 @@ import summary_engine
 import calendar_data
 from styles import CUSTOM_CSS
 
-# 서브모듈 캐시 무효화 및 강제 리로드 (Streamlit 핫 리로드 보장)
-importlib.reload(data_loader)
-importlib.reload(summary_engine)
-importlib.reload(calendar_data)
 
 
 # 1. 페이지 설정
@@ -249,9 +245,15 @@ if "KRX" in market_choice:
 
         with tab_live:
             # 1. 당일 실시간 바 차트
-            p_val = inv_kp.get('personal', 0.0)
-            f_val = inv_kp.get('foreign', 0.0)
-            i_val = inv_kp.get('institutional', 0.0)
+            is_pre_market = m_status.get('status') == 'PRE_MARKET'
+            is_today = inv_kp.get('is_today', True)
+            if is_pre_market or not is_today:
+                p_val, f_val, i_val = 0.0, 0.0, 0.0
+            else:
+                p_val = inv_kp.get('personal', 0.0)
+                f_val = inv_kp.get('foreign', 0.0)
+                i_val = inv_kp.get('institutional', 0.0)
+
             live_time = prog.get('time_str', '')
             live_time_str = f" ({live_time} 기준)" if live_time else ""
 
@@ -264,6 +266,15 @@ if "KRX" in market_choice:
             color_f = '#8b5cf6' if f_val > 0 else ('#6366f1' if f_val < 0 else '#64748b')  # 외국인: 바이올렛/퍼플 (0: 슬레이트)
             color_i = '#10b981' if i_val > 0 else ('#059669' if i_val < 0 else '#64748b')  # 기관: 에메랄드 그린 (0: 슬레이트)
 
+            # 상단 텍스트 잘림 방지 헤드룸 계산
+            vals_live = [p_val, f_val, i_val]
+            max_lv = max(vals_live)
+            min_lv = min(vals_live)
+            span_lv = max(abs(max_lv), abs(min_lv), 100.0)
+            pad_lv = max(span_lv * 0.25, 200.0)
+            yl_upper = (max_lv + pad_lv) if max_lv > 0 else pad_lv
+            yl_lower = (min_lv - pad_lv) if min_lv < 0 else -pad_lv
+
             fig_inv = go.Figure(go.Bar(
                 x=['개인', '외국인', '기관'],
                 y=[p_val, f_val, i_val],
@@ -271,12 +282,14 @@ if "KRX" in market_choice:
                 marker_line=dict(width=1.5, color=['#fbbf24' if p_val != 0 else '#94a3b8', '#a78bfa' if f_val != 0 else '#94a3b8', '#34d399' if i_val != 0 else '#94a3b8']),
                 text=[f"{p_val:+,.0f}억" if p_val != 0 else "0억", f"{f_val:+,.0f}억" if f_val != 0 else "0억", f"{i_val:+,.0f}억" if i_val != 0 else "0억"],
                 textposition='auto',
+                cliponaxis=False,
                 textfont=dict(color='#ffffff', size=13, family='Pretendard')
             ))
             fig_inv.update_layout(
-                margin=dict(l=20, r=20, t=10, b=10),
+                margin=dict(l=20, r=20, t=32, b=15),
                 height=230,
                 yaxis_title="순매수액 (억원)",
+                yaxis=dict(range=[yl_lower, yl_upper]),
                 template="plotly_dark",
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(30,41,59,0.5)',
@@ -297,6 +310,15 @@ if "KRX" in market_choice:
             color_pf = '#8b5cf6' if pf_val >= 0 else '#6366f1'
             color_pi = '#10b981' if pi_val >= 0 else '#059669'
 
+            # 상단 텍스트 잘림 방지 헤드룸 계산
+            vals_prev = [pp_val, pf_val, pi_val]
+            max_pv = max(vals_prev) if vals_prev else 0.0
+            min_pv = min(vals_prev) if vals_prev else 0.0
+            span_pv = max(abs(max_pv), abs(min_pv), 100.0)
+            pad_pv = max(span_pv * 0.25, 200.0)
+            yp_upper = (max_pv + pad_pv) if max_pv > 0 else pad_pv
+            yp_lower = (min_pv - pad_pv) if min_pv < 0 else -pad_pv
+
             fig_prev = go.Figure(go.Bar(
                 x=['개인', '외국인', '기관'],
                 y=[pp_val, pf_val, pi_val],
@@ -304,12 +326,14 @@ if "KRX" in market_choice:
                 marker_line=dict(width=1.5, color=['#fbbf24', '#a78bfa', '#34d399']),
                 text=[f"{pp_val:+,.0f}억", f"{pf_val:+,.0f}억", f"{pi_val:+,.0f}억"],
                 textposition='auto',
+                cliponaxis=False,
                 textfont=dict(color='#ffffff', size=13, family='Pretendard')
             ))
             fig_prev.update_layout(
-                margin=dict(l=20, r=20, t=10, b=10),
-                height=210,
+                margin=dict(l=20, r=20, t=32, b=15),
+                height=230,
                 yaxis_title="순매수액 (억원)",
+                yaxis=dict(range=[yp_lower, yp_upper]),
                 template="plotly_dark",
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(30,41,59,0.5)',
