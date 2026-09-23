@@ -78,10 +78,15 @@ with st.sidebar:
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # 새로고침 버튼
-    if st.button("🔄 Update", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
+    # 액션 버튼 (Update & 조회)
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("🔄 Update", use_container_width=True, help="캐시를 초기화하고 최신 시황 및 지수를 다시 수집합니다."):
+            st.cache_data.clear()
+            st.rerun()
+    with col_btn2:
+        if st.button("🔍 조회", type="primary", use_container_width=True, help="선택한 시장으로 브리핑을 새로고침합니다."):
+            st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("<div style='color: #64748b; font-size: 0.8rem; line-height: 1.5;'>💡 <b>데이터 안내</b>: 네이버 금융 및 Yahoo Finance를 통해 최신 시황을 실시간 수집하며, 장중 실시간 지수와 마감 종가를 자동으로 구분하여 제공합니다.</div>", unsafe_allow_html=True)
