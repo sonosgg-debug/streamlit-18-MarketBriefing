@@ -29,6 +29,96 @@ def get_now_ny():
         # 서머타임 고려 기본 오프셋 fallback
         return datetime.now(timezone(timedelta(hours=-4)))
 
+# 한국거래소(KRX) 정규 휴장일 및 법정 공휴일 (2024~2027)
+KRX_HOLIDAYS = {
+    # 2024
+    '20240101', '20240209', '20240212', '20240301', '20240410', '20240501', '20240506',
+    '20240515', '20240606', '20240815', '20240916', '20240917', '20240918', '20241001',
+    '20241003', '20241009', '20241225', '20241231',
+    # 2025
+    '20250101', '20250128', '20250129', '20250130', '20250303', '20250501', '20250505',
+    '20250506', '20250606', '20250815', '20251003', '20251006', '20251007', '20251008',
+    '20251009', '20251225', '20251231',
+    # 2026
+    '20260101', '20260216', '20260217', '20260218', '20260302', '20260501', '20260505',
+    '20260525', '20260603', '20260606', '20260817', '20260924', '20260925', '20261005',
+    '20261009', '20261225', '20261231',
+    # 2027
+    '20270101', '20270208', '20270209', '20270210', '20270301', '20270503', '20270505',
+    '20270513', '20270607', '20270816', '20270914', '20270915', '20270916', '20271004',
+    '20271011', '20271225', '20271231'
+}
+
+_CACHED_TRADING_DAYS = None
+
+def get_krx_trading_days(count=120):
+    """
+    한국거래소(KRX)의 실제 거래일(개장일) 목록을 반환합니다.
+    1. 네이버 증시 API를 통해 실시간 실제 거래일 리스트를 우선 확보
+    2. 실패 시 사전 정의된 휴장일 캘린더 및 주말 제외 알고리즘으로 폴백
+    """
+    global _CACHED_TRADING_DAYS
+    if _CACHED_TRADING_DAYS is not None and len(_CACHED_TRADING_DAYS) >= count:
+        return _CACHED_TRADING_DAYS
+        
+    days = []
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    pages_needed = (count + 59) // 60
+    for page in range(1, pages_needed + 1):
+        try:
+            url = f'https://m.stock.naver.com/api/stock/005930/price?pageSize=60&page={page}'
+            r = requests.get(url, headers=headers, timeout=3)
+            if r.status_code == 200:
+                items = r.json()
+                if items:
+                    days.extend([item['localTradedAt'].replace('-', '') for item in items])
+                else:
+                    break
+        except Exception:
+            pass
+            
+    if days:
+        _CACHED_TRADING_DAYS = sorted(list(set(days)))
+        return _CACHED_TRADING_DAYS
+        
+    fallback_days = []
+    now_kst = get_now_kst()
+    d = now_kst
+    for _ in range(count * 3):
+        d_str = d.strftime('%Y%m%d')
+        if d.weekday() < 5 and d_str not in KRX_HOLIDAYS:
+            fallback_days.append(d_str)
+            if len(fallback_days) >= count:
+                break
+        d -= timedelta(days=1)
+        
+    _CACHED_TRADING_DAYS = sorted(fallback_days)
+    return _CACHED_TRADING_DAYS
+
+def is_krx_trading_day(date_str):
+    """주어진 날짜(YYYYMMDD 또는 YYYY-MM-DD)가 실제 거래일인지 판별합니다."""
+    clean_date = str(date_str).replace('-', '')
+    trading_days = get_krx_trading_days(120)
+    if clean_date in trading_days:
+        return True
+    try:
+        dt = datetime.strptime(clean_date, "%Y%m%d")
+        return (dt.weekday() < 5) and (clean_date not in KRX_HOLIDAYS)
+    except:
+        return False
+
+def get_latest_completed_trading_day():
+    """가장 최근에 완료된 실제 마감 거래일 YYYYMMDD 반환"""
+    trading_days = get_krx_trading_days(120)
+    now_kst = get_now_kst()
+    today_str = now_kst.strftime('%Y%m%d')
+    if now_kst.hour >= 16 and today_str in trading_days:
+        return today_str
+    prior_days = [d for d in trading_days if d < today_str]
+    if prior_days:
+        return prior_days[-1]
+    return trading_days[-1] if trading_days else (now_kst - timedelta(days=1)).strftime('%Y%m%d')
+
 def get_market_status(market='KRX'):
     """
     서버 환경(로컬 PC 또는 UTC 기반 클라우드 서버)에 관계없이
@@ -37,14 +127,34 @@ def get_market_status(market='KRX'):
     if market == 'KRX':
         now_kst = get_now_kst()
         weekday = now_kst.weekday() # 0:월 ~ 4:금, 5:토, 6:일
+        today_str = now_kst.strftime('%Y%m%d')
+        
+        # 1. 주말 휴장 판정
         if weekday >= 5:
+            latest_bday = get_latest_completed_trading_day()
+            latest_fmt = f"{latest_bday[:4]}-{latest_bday[4:6]}-{latest_bday[6:]}"
             return {
                 'status': 'WEEKEND',
-                'label': '🏖️ 주말 휴장 (직전 거래일 종가 기준)',
+                'label': f'🏖️ 주말 휴장 (직전 거래일 {latest_fmt} 종가 기준)',
                 'badge': '⚪ 주말 휴장',
                 'is_live': False,
                 'title_suffix': '마감 종합 브리핑',
-                'time_str': f"{now_kst.strftime('%Y-%m-%d')} (직전 정규장 마감)",
+                'time_str': f"{latest_fmt} (직전 정규장 마감)",
+                'closing_word': '마감',
+                'current_time_str': now_kst.strftime('%H:%M:%S KST')
+            }
+            
+        # 2. 평일 공휴일/휴장일 판정
+        if not is_krx_trading_day(today_str):
+            latest_bday = get_latest_completed_trading_day()
+            latest_fmt = f"{latest_bday[:4]}-{latest_bday[4:6]}-{latest_bday[6:]}"
+            return {
+                'status': 'HOLIDAY',
+                'label': f'🏖️ 공휴일/증시 휴장 (직전 거래일 {latest_fmt} 종가 기준)',
+                'badge': '⚪ 공휴일 휴장',
+                'is_live': False,
+                'title_suffix': '휴장일 마켓 브리핑',
+                'time_str': f"{latest_fmt} (직전 정규장 마감)",
                 'closing_word': '마감',
                 'current_time_str': now_kst.strftime('%H:%M:%S KST')
             }
