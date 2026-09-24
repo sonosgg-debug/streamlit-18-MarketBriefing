@@ -44,20 +44,21 @@ with st.sidebar:
 
     # [핵심 요구사항] 증시 구분 선택
     market_choice = st.radio(
-        "**증시 구분 (Market Select)**",
-        ["한국 (KRX)", "미국 (US)"],
+        "🏛️ 시장 선택",
+        ["한국 시장 (KRX)", "미국 시장 (US)"],
         index=0,
+        horizontal=True,
         help="조회하고자 하는 주식 시장을 선택하세요."
     )
 
     st.markdown("---")
     
     # 동적 시장 상태 계산
-    target_market_key = 'KRX' if "KRX" in market_choice else 'US'
+    target_market_key = 'KRX' if ("KRX" in market_choice or "한국" in market_choice) else 'US'
     m_status = data_loader.get_market_status(target_market_key)
 
     # 시장 운영 안내 및 상태 뱃지 (실시간 감지)
-    if "KRX" in market_choice:
+    if "KRX" in market_choice or "한국" in market_choice:
         st.markdown("### 🕒 **한국 증시(KRX) 운영 안내**")
         st.caption("• 정규 거래시간: 09:00 ~ 15:30 (KST)")
         st.caption(f"• 현재 시각: {m_status.get('current_time_str', '')}")
@@ -92,7 +93,7 @@ with st.sidebar:
     st.markdown("<div style='color: #64748b; font-size: 0.8rem; line-height: 1.5;'>💡 <b>데이터 안내</b>: 네이버 금융 및 Yahoo Finance를 통해 최신 시황을 실시간 수집하며, 장중 실시간 지수와 마감 종가를 자동으로 구분하여 제공합니다.</div>", unsafe_allow_html=True)
 
 # 4. 메인 대시보드 로직
-if "KRX" in market_choice:
+if "KRX" in market_choice or "한국" in market_choice:
     # 한국 증시 (KRX) 화면
     data = load_krx()
     briefing = summary_engine.generate_krx_briefing(data, is_live=m_status['is_live'], time_str=m_status['time_str'])
