@@ -38,9 +38,20 @@ def load_us():
 
 # 3. 사이드바 구성
 with st.sidebar:
-    st.markdown("## 📊 **글로벌 마켓 브리핑**")
-    st.markdown("<div style='color: #94a3b8; font-size: 0.9rem;'>정규장 실시간 상황 및 마감 결과를 한눈에 요약해 드립니다.</div>", unsafe_allow_html=True)
-    st.markdown("---")
+    st.markdown(
+        """
+        <div style='padding: 2px 0 12px 0;'>
+            <div style='font-size: 1.25rem; font-weight: 700; color: #f8fafc; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px;'>
+                <span>📊</span> 글로벌 마켓 브리핑
+            </div>
+            <div style='font-size: 0.82rem; color: #94a3b8; margin-top: 4px; line-height: 1.4;'>
+                정규장 실시간 상황 및 마감 결과를 한눈에 요약해 드립니다.
+            </div>
+        </div>
+        <hr style='border: 0; height: 1px; background-color: #334155; margin: 10px 0 16px 0;'>
+        """,
+        unsafe_allow_html=True
+    )
 
     # [핵심 요구사항] 증시 구분 선택
     market_choice = st.radio(

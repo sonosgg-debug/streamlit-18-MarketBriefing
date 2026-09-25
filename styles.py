@@ -641,5 +641,17 @@ section[data-testid="stSidebar"] {
         margin: 0 !important;
         padding: 0 !important;
     }
+
+    /* 사이드바 스타일링 */
+    section[data-testid="stSidebar"], [data-testid="stSidebar"] {
+        background-color: #1e293b !important;
+        border-right: 1px solid #334155 !important;
+    }
+    section[data-testid="stSidebar"] h1,
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] h3 {
+        color: #f8fafc !important;
+        -webkit-text-fill-color: #f8fafc !important;
+    }
 </style>
 """
