@@ -392,7 +392,7 @@ if "KRX" in market_choice or "한국" in market_choice:
             # 최근 5거래일 일자별 수급 표
             df_hist = data.get('investors_history_kospi', pd.DataFrame())
             if not df_hist.empty:
-                st.markdown("<div style='font-size: 0.85rem; font-weight: 600; margin-top: 10px; margin-bottom: 4px; color: #cbd5e1;'>📋 최근 5거래일 일자별 수급 추이 (단위: 억원)</div>", unsafe_allow_html=True)
+                st.markdown("<div style='font-size: 1.00rem; font-weight: 600; color: #E2E8F0; margin: 14px 0 6px 0; display: flex; align-items: center; gap: 6px;'><span>📋</span> 최근 5거래일 일자별 수급 추이 (단위: 억원)</div>", unsafe_allow_html=True)
                 show_cols = [c for c in ['날짜', '개인', '외국인', '기관계', '금융투자', '연기금', '기타법인'] if c in df_hist.columns]
                 df_disp = df_hist[show_cols].copy()
                 for c in show_cols[1:]:

@@ -78,16 +78,16 @@ CUSTOM_CSS = """
     overflow: visible;
 }
 
-/* 섹션 타이틀 */
+/* 섹션 타이틀 - Level 2 표준 규격 (1.20rem, #8AB4F8, Bold 700) */
 .section-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 1.25rem;
+    font-size: 1.20rem;
     font-weight: 700;
-    color: #f1f5f9;
-    margin-top: 26px;
-    margin-bottom: 14px;
+    color: #8AB4F8;
+    margin-top: 24px;
+    margin-bottom: 12px;
     padding-bottom: 8px;
     border-bottom: 2px solid #334155;
 }
