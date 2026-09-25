@@ -4,6 +4,10 @@ app.py
 (실시간 장중 vs 정규장 마감 상태 자동 감지 및 고대비 다크 테마)
 """
 
+
+import socket
+socket.setdefaulttimeout(5.0)
+
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
