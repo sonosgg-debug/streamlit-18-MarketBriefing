@@ -12,6 +12,11 @@ CUSTOM_CSS = """
     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
 }
 
+    /* Streamlit 고정 상단 헤더 배경 투명화 */
+    header[data-testid="stHeader"] {
+        background: transparent !important;
+    }
+
 /* 상단 패딩 축소 및 너비 확보 (상단 툴바와 타이틀 간 쾌적한 여백 확보) */
 .main .block-container,
 [data-testid="stMainBlockContainer"],

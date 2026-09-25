@@ -25,6 +25,7 @@ wheels/
 
 # Streamlit secrets (config.toml은 다크 테마 유지를 위해 git에 포함)
 .streamlit/secrets.toml
+!.streamlit/config.toml
 
 # OS / Editor
 .DS_Store
