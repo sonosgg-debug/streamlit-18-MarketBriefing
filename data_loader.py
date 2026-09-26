@@ -49,6 +49,50 @@ KRX_HOLIDAYS = {
     '20271011', '20271225', '20271231'
 }
 
+# 미국 증시(NYSE/NASDAQ) 정규 휴장일 (2024~2027)
+US_HOLIDAYS = {
+    # 2024
+    '20240101', '20240115', '20240219', '20240329', '20240527', '20240619', '20240704', '20240902', '20241128', '20241225',
+    # 2025
+    '20250101', '20250120', '20250217', '20250418', '20250526', '20250619', '20250704', '20250901', '20251127', '20251225',
+    # 2026
+    '20260101', '20260119', '20260216', '20260403', '20260525', '20260619', '20260703', '20260907', '20261126', '20261225',
+    # 2027
+    '20270101', '20270118', '20270215', '20270326', '20270531', '20270618', '20270705', '20270906', '20271125', '20271224'
+}
+
+def is_us_trading_day(date_val) -> bool:
+    """주어진 날짜(date, YYYYMMDD 또는 YYYY-MM-DD)가 미국 증시 정규 거래일인지 판별합니다."""
+    clean_date = str(date_val).replace('-', '').strip()
+    try:
+        dt = datetime.strptime(clean_date, "%Y%m%d")
+        return (dt.weekday() < 5) and (clean_date not in US_HOLIDAYS)
+    except Exception:
+        return False
+
+def is_any_market_trading_day(date_val) -> bool:
+    """한국거래소 또는 미국 증시 중 최소 한 곳이라도 정규 거래일인지 판별합니다."""
+    return is_krx_trading_day(date_val) or is_us_trading_day(date_val)
+
+def get_latest_completed_us_trading_day() -> str:
+    """미국 증시(NYSE/NASDAQ)에서 공식 마감 종가가 완료된 최신 거래일 YYYYMMDD 반환"""
+    now_ny = get_now_ny()
+    today_ny = now_ny.date()
+    cur_time = now_ny.time()
+    market_close = datetime.strptime("16:00", "%H:%M").time()
+
+    # 오늘이 미국 정규 거래일이고 16:00 이후이면 오늘 반환
+    if cur_time >= market_close and is_us_trading_day(today_ny):
+        return today_ny.strftime('%Y%m%d')
+
+    # 어제 또는 그 이전 중 최신 거래일 역추적
+    d = today_ny - timedelta(days=1)
+    for _ in range(60):
+        if is_us_trading_day(d):
+            return d.strftime('%Y%m%d')
+        d -= timedelta(days=1)
+    return (today_ny - timedelta(days=1)).strftime('%Y%m%d')
+
 _CACHED_TRADING_DAYS = None
 
 def get_krx_trading_days(count=120):
@@ -200,14 +244,34 @@ def get_market_status(market='KRX'):
     else: # US
         now_ny = get_now_ny()
         weekday = now_ny.weekday()
+        today_ny_str = now_ny.strftime('%Y%m%d')
+        
+        # 1. 주말 휴장 판정
         if weekday >= 5:
+            latest_bday = get_latest_completed_us_trading_day()
+            latest_fmt = f"{latest_bday[:4]}-{latest_bday[4:6]}-{latest_bday[6:]}"
             return {
                 'status': 'WEEKEND',
-                'label': '🏖️ 주말 휴장 (직전 뉴욕 종가 기준)',
+                'label': f'🏖️ 주말 휴장 (직전 뉴욕 종가 {latest_fmt} 기준)',
                 'badge': '⚪ 뉴욕 휴장',
                 'is_live': False,
                 'title_suffix': '마감 종합 브리핑',
-                'time_str': f"{now_ny.strftime('%Y-%m-%d')} ET (직전 거래일 마감)",
+                'time_str': f"{latest_fmt} ET (직전 거래일 마감)",
+                'closing_word': '마감',
+                'current_time_str': now_ny.strftime('%H:%M:%S ET')
+            }
+            
+        # 2. 평일 미국 공휴일/휴장일 판정
+        if not is_us_trading_day(today_ny_str):
+            latest_bday = get_latest_completed_us_trading_day()
+            latest_fmt = f"{latest_bday[:4]}-{latest_bday[4:6]}-{latest_bday[6:]}"
+            return {
+                'status': 'HOLIDAY',
+                'label': f'🏖️ 미국 공휴일/휴장 (직전 거래일 {latest_fmt} 뉴욕 종가 기준)',
+                'badge': '⚪ 뉴욕 휴장',
+                'is_live': False,
+                'title_suffix': '휴장일 마켓 브리핑',
+                'time_str': f"{latest_fmt} ET (직전 정규장 마감)",
                 'closing_word': '마감',
                 'current_time_str': now_ny.strftime('%H:%M:%S ET')
             }
@@ -227,10 +291,23 @@ def get_market_status(market='KRX'):
                 'closing_word': '진행 중',
                 'current_time_str': now_ny.strftime('%H:%M:%S ET')
             }
+        elif cur_time < market_open:
+            latest_bday = get_latest_completed_us_trading_day()
+            latest_fmt = f"{latest_bday[:4]}-{latest_bday[4:6]}-{latest_bday[6:]}"
+            return {
+                'status': 'PRE_MARKET',
+                'label': '⏳ 뉴욕 장 개장 전 (직전 마감 기준)',
+                'badge': '⏳ 개장 전',
+                'is_live': False,
+                'title_suffix': '개장 전 브리핑 (전일 마감 기준)',
+                'time_str': f"{latest_fmt} ET (직전 정규장 마감)",
+                'closing_word': '마감',
+                'current_time_str': now_ny.strftime('%H:%M:%S ET')
+            }
         else:
             return {
                 'status': 'CLOSED',
-                'label': '🏁 뉴욕 정규장 마감 완료',
+                'label': '🏁 당일 뉴욕 정규장 마감 완료',
                 'badge': '✅ 정규장 마감',
                 'is_live': False,
                 'title_suffix': '마감 종합 브리핑',
