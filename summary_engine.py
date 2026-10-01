@@ -4,7 +4,7 @@ summary_engine.py
 - 장 진행 중(Live) 및 마감 완료(Closed) 상태를 구분하여 맞춤형 텍스트 제공
 """
 
-def generate_krx_briefing(krx_data, is_live=False, time_str=""):
+def generate_krx_briefing(krx_data, is_live=False, time_str="", market_drivers=None):
     """
     한국 시장(KRX) 요약 생성 (is_live에 따라 장중/마감 문구 자동 분기)
     """
@@ -125,6 +125,18 @@ def generate_krx_briefing(krx_data, is_live=False, time_str=""):
         "다가오는 주요 경제 이벤트(금통위 및 글로벌 중앙은행 통화정책)를 앞둔 차익실현 매물 소화 과정 주시"
     ]
 
+    drivers_text = ""
+    if market_drivers and market_drivers.get('sentences'):
+        drivers_text = "■ 오늘의 시장을 움직인 핵심 동인 (Market Drivers)\n"
+        for i, s in enumerate(market_drivers.get('sentences', []), 1):
+            drivers_text += f"{i}. {s}\n"
+        articles = market_drivers.get('articles', [])
+        if articles:
+            drivers_text += "[대표 기사 (네이버 증권)]\n"
+            for a in articles:
+                drivers_text += f"- [{a.get('press', '언론사')}] {a.get('title', '')} ({a.get('time', '')})\n"
+        drivers_text += "\n"
+
     report_type_kr = "실시간 장중 브리핑" if is_live else "마감 데일리 브리핑"
     full_report_text = f"""[한국 증시(KRX) {report_type_kr}]
 📅 기준: {time_str if time_str else krx_data.get('date')}
@@ -140,7 +152,7 @@ def generate_krx_briefing(krx_data, is_live=False, time_str=""):
 - 기관: {kp_inst:+,.0f}억원
 - 프로그램 비차익: {prog_non_arb:+,.0f}억원
 
-■ 핵심 3줄 요약
+{drivers_text}■ 핵심 3줄 요약
 1. {bullets[0].replace('**', '')}
 2. {bullets[1].replace('**', '')}
 3. {bullets[2].replace('**', '')}
@@ -163,7 +175,7 @@ def generate_krx_briefing(krx_data, is_live=False, time_str=""):
     }
 
 
-def generate_us_briefing(us_data, is_live=False, time_str=""):
+def generate_us_briefing(us_data, is_live=False, time_str="", market_drivers=None):
     """
     미국 시장(US) 요약 생성
     """
@@ -242,6 +254,18 @@ def generate_us_briefing(us_data, is_live=False, time_str=""):
         f"필라델피아 반도체 지수({sox.get('price', 0):,.2f}pt) 및 엔비디아/애플 등 핵심 대형주 지지선 테스트"
     ]
 
+    drivers_text = ""
+    if market_drivers and market_drivers.get('sentences'):
+        drivers_text = "■ 오늘의 시장을 움직인 핵심 동인 (Market Drivers)\n"
+        for i, s in enumerate(market_drivers.get('sentences', []), 1):
+            drivers_text += f"{i}. {s}\n"
+        articles = market_drivers.get('articles', [])
+        if articles:
+            drivers_text += "[대표 기사 (Yahoo Finance)]\n"
+            for a in articles:
+                drivers_text += f"- [{a.get('press', 'Yahoo Finance')}] {a.get('title', '')}\n"
+        drivers_text += "\n"
+
     report_type_us = "실시간 장중 브리핑" if is_live else "마감 데일리 브리핑"
     full_report_text = f"""[미국 증시(US) {report_type_us}]
 📅 기준: {time_str if time_str else us_data.get('date')}
@@ -262,7 +286,7 @@ def generate_us_briefing(us_data, is_live=False, time_str=""):
 - 비트코인(BTC): ${btc.get('price', 0):,.2f}
 - VIX 변동성 지수: {vix.get('price', 0):.2f}pt
 
-■ 핵심 3줄 요약
+{drivers_text}■ 핵심 3줄 요약
 1. {bullets[0].replace('**', '')}
 2. {bullets[1].replace('**', '')}
 3. {bullets[2].replace('**', '')}

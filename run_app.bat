@@ -9,8 +9,9 @@ python -m pip install -r requirements.txt --quiet
 
 echo.
 echo [2/2] Launching Dashboard web app...
+echo Opening web browser at http://localhost:8501...
 echo Press Ctrl+C to stop the server.
 echo.
 
-python -m streamlit run app.py
+python -m streamlit run app.py --server.headless false
 pause

@@ -658,5 +658,133 @@ section[data-testid="stSidebar"] {
         color: #f8fafc !important;
         -webkit-text-fill-color: #f8fafc !important;
     }
+
+    /* 🔥 시장 핵심 동인 (Market Drivers) 코너 전용 스타일 */
+    .market-drivers-container {
+        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #3b82f6;
+        border-left: 5px solid #38bdf8;
+        border-radius: 12px;
+        padding: 20px 24px;
+        margin-top: 14px;
+        margin-bottom: 22px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    }
+
+    .market-drivers-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 14px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #334155;
+    }
+
+    .market-drivers-title {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #f8fafc;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .driver-tag-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .driver-tag {
+        background: #0f172a;
+        color: #38bdf8;
+        border: 1px solid #0284c7;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: -0.2px;
+    }
+
+    .driver-sentence-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+
+    .driver-sentence-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        line-height: 1.6;
+        font-size: 0.95rem;
+        color: #e2e8f0;
+    }
+
+    .driver-sentence-num {
+        background: #0284c7;
+        color: #ffffff;
+        min-width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.78rem;
+        font-weight: 700;
+        margin-top: 2px;
+        flex-shrink: 0;
+    }
+
+    .driver-articles-box {
+        background: rgba(15, 23, 42, 0.65);
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-top: 12px;
+    }
+
+    .driver-articles-header {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #94a3b8;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .driver-article-link {
+        display: block;
+        padding: 5px 8px;
+        border-radius: 6px;
+        text-decoration: none !important;
+        color: #cbd5e1 !important;
+        font-size: 0.88rem;
+        transition: all 0.15s ease;
+        line-height: 1.4;
+    }
+
+    .driver-article-link:hover {
+        background: #1e293b;
+        color: #38bdf8 !important;
+        padding-left: 12px;
+    }
+
+    .driver-article-press {
+        color: #64748b;
+        font-size: 0.78rem;
+        margin-right: 6px;
+        font-weight: 600;
+    }
+
+    .driver-article-time {
+        color: #475569;
+        font-size: 0.75rem;
+        margin-left: 6px;
+    }
 </style>
 """

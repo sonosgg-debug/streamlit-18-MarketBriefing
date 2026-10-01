@@ -17,6 +17,7 @@ import importlib
 import data_loader
 import summary_engine
 import calendar_data
+import news_loader
 from styles import CUSTOM_CSS
 
 STANDARD_CHART_THEME = {
@@ -57,6 +58,75 @@ def load_krx():
 @st.cache_data(ttl=60)
 def load_us():
     return data_loader.get_us_summary()
+
+@st.cache_data(ttl=300) # 뉴스 수집 및 브리핑 캐시 (5분 단위 갱신)
+def load_krx_drivers(krx_data):
+    return news_loader.get_krx_market_drivers(krx_data)
+
+@st.cache_data(ttl=300)
+def load_us_drivers(us_data):
+    return news_loader.get_us_market_drivers(us_data)
+
+
+def render_market_drivers_section(drivers: dict, source_name: str):
+    """
+    오늘의 시장을 움직인 핵심 동인 (Market Drivers) UI 섹션 렌더링
+    - 3~4문장 핵심 브리핑
+    - 핵심 해시태그 뱃지
+    - 분석에 활용된 대표 뉴스 3선 (제목, 언론사, 링크)
+    (마크다운 코드블록 오인 방지를 위해 들여쓰기 공백을 완전 제거한 스트링 생성)
+    """
+    if not drivers or not drivers.get('sentences'):
+        return
+
+    sentences = drivers.get('sentences', [])
+    tags = drivers.get('tags', [])
+    articles = drivers.get('articles', [])
+
+    tags_html = "".join([f"<span class='driver-tag'>{escape_markdown(tag)}</span>" for tag in tags])
+
+    sentences_html = "".join([
+        f"<div class='driver-sentence-item'><span class='driver-sentence-num'>{i}</span><div style='flex: 1;'>{escape_markdown(s)}</div></div>"
+        for i, s in enumerate(sentences, 1)
+    ])
+
+    articles_html = ""
+    if articles:
+        article_items = []
+        for a in articles:
+            time_part = f"<span class='driver-article-time'>({a.get('time')})</span> " if a.get('time') else ""
+            press_part = f"<span class='driver-article-press'>[{a.get('press', source_name)}]</span>"
+            t_escaped = escape_markdown(a.get('title', ''))
+            href = a.get('link', '#')
+            article_items.append(
+                f"<a href='{href}' target='_blank' rel='noopener noreferrer' class='driver-article-link'>"
+                f"{press_part} {t_escaped} {time_part}<span style='font-size: 0.75rem; color: #38bdf8;'>↗</span></a>"
+            )
+        articles_body = "".join(article_items)
+
+        articles_html = (
+            f"<div class='driver-articles-box'>"
+            f"<div class='driver-articles-header'>"
+            f"<span>🔗</span> <b>분석에 활용된 대표 기사 3선 ({source_name})</b>"
+            f"<span style='font-size: 0.75rem; color: #64748b; margin-left: auto;'>클릭 시 원문 이동</span>"
+            f"</div>"
+            f"<div style='display: flex; flex-direction: column; gap: 4px;'>{articles_body}</div>"
+            f"</div>"
+        )
+
+    html = (
+        f"<div class='market-drivers-container'>"
+        f"<div class='market-drivers-header'>"
+        f"<div class='market-drivers-title'>"
+        f"<span>🔥</span> 오늘의 시장을 움직인 핵심 동인 <span style='font-size: 0.85rem; font-weight: 500; color: #94a3b8;'>(Market Drivers)</span>"
+        f"</div>"
+        f"<div class='driver-tag-container'>{tags_html}</div>"
+        f"</div>"
+        f"<div class='driver-sentence-list'>{sentences_html}</div>"
+        f"{articles_html}"
+        f"</div>"
+    )
+    st.markdown(html, unsafe_allow_html=True)
 
 # 3. 사이드바 구성
 with st.sidebar:
@@ -123,13 +193,51 @@ with st.sidebar:
             st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
+
+    # 4. AI 요약 설정 (Gemini API)
+    with st.expander("🤖 AI 요약 설정 (Gemini)", expanded=False):
+        current_key = news_loader.get_gemini_api_key()
+        has_key = bool(current_key)
+
+        if has_key:
+            st.markdown("<span style='color: #10b981; font-size: 0.82rem; font-weight: 700;'>🟢 Gemini AI 활성화됨</span>", unsafe_allow_html=True)
+            masked = current_key[:6] + "..." + current_key[-4:] if len(current_key) > 10 else "***"
+            st.caption(f"등록된 키: `{masked}`")
+        else:
+            st.markdown("<span style='color: #94a3b8; font-size: 0.82rem;'>⚪ 내장 스마트 엔진 동작 중</span>", unsafe_allow_html=True)
+            st.caption("키 미등록 시에도 자체 스마트 추출 알고리즘으로 3~4문장 브리핑이 제공됩니다.")
+
+        new_key = st.text_input(
+            "Gemini API Key",
+            value=st.session_state.get('gemini_api_key_input', ''),
+            type="password",
+            placeholder="AIzaSy...",
+            help="Google AI Studio에서 무료로 발급받은 API 키를 입력하세요.",
+            key="gemini_api_key_field"
+        )
+        if st.button("💾 API 키 적용", use_container_width=True):
+            if new_key.strip():
+                st.session_state['gemini_api_key_input'] = new_key.strip()
+                st.cache_data.clear()
+                st.success("API 키가 적용되었습니다!")
+                st.rerun()
+            else:
+                st.session_state.pop('gemini_api_key_input', None)
+                st.cache_data.clear()
+                st.info("API 키가 해제되었습니다.")
+                st.rerun()
+
+        st.markdown("<div style='font-size: 0.76rem; margin-top: 6px;'><a href='https://aistudio.google.com/app/apikey' target='_blank' rel='noopener noreferrer' style='color: #38bdf8;'>🔗 Google AI Studio 무료 키 발급 ↗</a></div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("<div style='color: #64748b; font-size: 0.8rem; line-height: 1.5;'>💡 <b>데이터 안내</b>: 네이버 금융 및 Yahoo Finance를 통해 최신 시황을 실시간 수집하며, 장중 실시간 지수와 마감 종가를 자동으로 구분하여 제공합니다.</div>", unsafe_allow_html=True)
 
 # 4. 메인 대시보드 로직
 if "KRX" in market_choice or "한국" in market_choice:
     # 한국 증시 (KRX) 화면
     data = load_krx()
-    briefing = summary_engine.generate_krx_briefing(data, is_live=m_status['is_live'], time_str=m_status['time_str'])
+    krx_drivers = load_krx_drivers(data)
+    briefing = summary_engine.generate_krx_briefing(data, is_live=m_status['is_live'], time_str=m_status['time_str'], market_drivers=krx_drivers)
     events = calendar_data.get_upcoming_events('KRX')
 
     # 타이틀 헤더 (장중 vs 마감 동적 텍스트 적용)
@@ -251,6 +359,9 @@ if "KRX" in market_choice or "한국" in market_choice:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    # [신설 코너] 오늘의 시장을 움직인 핵심 동인 (Market Drivers) - 네이버 증권 기반
+    render_market_drivers_section(krx_drivers, "네이버 증권")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -505,7 +616,8 @@ if "KRX" in market_choice or "한국" in market_choice:
 else:
     # 미국 증시 (US) 화면
     data = load_us()
-    briefing = summary_engine.generate_us_briefing(data, is_live=m_status['is_live'], time_str=m_status['time_str'])
+    us_drivers = load_us_drivers(data)
+    briefing = summary_engine.generate_us_briefing(data, is_live=m_status['is_live'], time_str=m_status['time_str'], market_drivers=us_drivers)
     events = calendar_data.get_upcoming_events('US')
 
     # 타이틀 헤더
@@ -618,6 +730,8 @@ else:
     """
     st.markdown(us_ribbon_html, unsafe_allow_html=True)
 
+    # [신설 코너] 오늘의 시장을 움직인 핵심 동인 (Market Drivers) - Yahoo Finance 기반
+    render_market_drivers_section(us_drivers, "Yahoo Finance")
 
     # 2. 오늘의 시장 요약 (핵심 3선 + 심층 브리핑)
     section_summary_title = "📌 현재 장중 시장 상황 요약" if m_status['is_live'] else "📌 오늘의 시장 마감 요약"
@@ -630,7 +744,7 @@ else:
         st.markdown(f"<div class='summary-bullet'>• {b_formatted}</div>", unsafe_allow_html=True)
 
     # 상세 마켓 브리핑
-    with st.expander("📖 **상세 마켓 브리핑 보기 (3대 지수·매크로·M7 동향 심층 분석)**", expanded=True):
+    with st.expander("📖 **상세 마켓 브리핑 보기 (3대 지수·매크로·M7 동향 심층 분석)**", expanded=False):
         st.markdown(escape_markdown(briefing['detailed_brief']))
 
     st.markdown("<br>", unsafe_allow_html=True)
