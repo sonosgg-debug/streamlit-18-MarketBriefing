@@ -23,9 +23,9 @@ def get_gemini_api_key():
         if st.session_state.get('gemini_api_key_input'):
             return st.session_state['gemini_api_key_input'].strip()
         # 2. .streamlit/secrets.toml 파일
-        if 'GEMINI_API_KEY' in st.secrets:
+        if hasattr(st, "secrets") and st.secrets and 'GEMINI_API_KEY' in st.secrets:
             return st.secrets['GEMINI_API_KEY'].strip()
-    except Exception:
+    except BaseException:
         pass
     # 3. OS 환경 변수
     key = os.environ.get('GEMINI_API_KEY')

@@ -5,9 +5,6 @@ app.py
 """
 
 
-import socket
-socket.setdefaulttimeout(5.0)
-
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -59,13 +56,13 @@ def load_krx():
 def load_us():
     return data_loader.get_us_summary()
 
-@st.cache_data(ttl=300) # 뉴스 수집 및 브리핑 캐시 (5분 단위 갱신)
-def load_krx_drivers(krx_data):
-    return news_loader.get_krx_market_drivers(krx_data)
+@st.cache_data(ttl=300) # 뉴스 수집 및 브리핑 캐시 (5분 단위 갱신, _접두사로 해싱 충돌 방지)
+def load_krx_drivers(_krx_data):
+    return news_loader.get_krx_market_drivers(_krx_data)
 
 @st.cache_data(ttl=300)
-def load_us_drivers(us_data):
-    return news_loader.get_us_market_drivers(us_data)
+def load_us_drivers(_us_data):
+    return news_loader.get_us_market_drivers(_us_data)
 
 
 def render_market_drivers_section(drivers: dict, source_name: str):
