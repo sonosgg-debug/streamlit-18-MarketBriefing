@@ -32,8 +32,11 @@ STANDARD_CHART_THEME = {
     'hover_bg': 'rgba(15, 23, 42, 0.9)',
     'hover_border': '#334155'
 }
-
-
+def escape_markdown(text: str) -> str:
+    """Streamlit st.markdown()에서 $ 기호가 KaTeX 수학 공식(LaTeX)으로 파싱되는 것을 방지합니다."""
+    if not text:
+        return text
+    return text.replace('$', r'\$')
 
 
 # 1. 페이지 설정
@@ -253,7 +256,7 @@ if "KRX" in market_choice or "한국" in market_choice:
 
     # 2. 1분 핵심 요약 총평 (Executive Bullets)
     st.markdown("<div class='section-header'>⚡ 당일 시장 핵심 1분 총평</div>", unsafe_allow_html=True)
-    bullets_html = "".join([f"<li class='bullet-item' style='margin-bottom: 8px;'>{b}</li>" for b in briefing['bullets']])
+    bullets_html = "".join([f"<li class='bullet-item' style='margin-bottom: 8px;'>{escape_markdown(b)}</li>" for b in briefing['bullets']])
     st.markdown(f"""
     <div class='bullet-box'>
         <ul style='list-style-type: none; padding-left: 0; margin-bottom: 0;'>
@@ -267,7 +270,7 @@ if "KRX" in market_choice or "한국" in market_choice:
     # 2-1. 상세 마켓 브리핑 (아코디언 형태)
     expander_title = "📖 **상세 마켓 브리핑 보기 (지수·수급·주도섹터 심층 분석)**"
     with st.expander(expander_title, expanded=False):
-        st.markdown(briefing['detailed_brief'])
+        st.markdown(escape_markdown(briefing['detailed_brief']))
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -479,10 +482,11 @@ if "KRX" in market_choice or "한국" in market_choice:
         
         st.markdown("<div class='checklist-box'>", unsafe_allow_html=True)
         for i, chk in enumerate(briefing['checkpoints'], 1):
+            chk_escaped = escape_markdown(chk)
             st.markdown(f"""
             <div class='checklist-item'>
                 <div class='checklist-num'>{i}</div>
-                <div style='color: #f1f5f9;'>{chk}</div>
+                <div style='color: #f1f5f9;'>{chk_escaped}</div>
             </div>
             """, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -622,12 +626,12 @@ else:
     # 3줄 핵심 총평 (다크 테마 고선명 텍스트)
     st.markdown("#### ⚡ **1분 핵심 총평**")
     for b in briefing['bullets']:
-        b_formatted = b.replace("**", "<strong>", 1).replace("**", "</strong>", 1)
+        b_formatted = escape_markdown(b.replace("**", "<strong>", 1).replace("**", "</strong>", 1))
         st.markdown(f"<div class='summary-bullet'>• {b_formatted}</div>", unsafe_allow_html=True)
 
     # 상세 마켓 브리핑
     with st.expander("📖 **상세 마켓 브리핑 보기 (3대 지수·매크로·M7 동향 심층 분석)**", expanded=True):
-        st.markdown(briefing['detailed_brief'])
+        st.markdown(escape_markdown(briefing['detailed_brief']))
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -705,10 +709,11 @@ else:
         
         st.markdown("<div class='checklist-box'>", unsafe_allow_html=True)
         for i, chk in enumerate(briefing['checkpoints'], 1):
+            chk_escaped = escape_markdown(chk)
             st.markdown(f"""
             <div class='checklist-item'>
                 <div class='checklist-num'>{i}</div>
-                <div style='color: #f1f5f9;'>{chk}</div>
+                <div style='color: #f1f5f9;'>{chk_escaped}</div>
             </div>
             """, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
