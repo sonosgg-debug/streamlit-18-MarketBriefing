@@ -49,27 +49,19 @@ def call_gemini_generate(prompt: str, api_key: str):
     }
     headers = {"Content-Type": "application/json"}
 
-    import time
     for model in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-        for attempt in range(2):
-            try:
-                res = requests.post(url, json=payload, headers=headers, timeout=15)
-                if res.status_code == 200:
-                    data = res.json()
-                    candidates = data.get('candidates', [])
-                    if candidates:
-                        text = candidates[0].get('content', {}).get('parts', [{}])[0].get('text', '')
-                        if text:
-                            return text.strip()
-                elif res.status_code in (429, 503):
-                    time.sleep(0.8)
-                    continue
-                else:
-                    break
-            except Exception as e:
-                print(f"Gemini API call ({model}) attempt {attempt+1} failed: {e}")
-                time.sleep(0.5)
+        try:
+            res = requests.post(url, json=payload, headers=headers, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                candidates = data.get('candidates', [])
+                if candidates:
+                    text = candidates[0].get('content', {}).get('parts', [{}])[0].get('text', '')
+                    if text:
+                        return text.strip()
+        except Exception as e:
+            print(f"Gemini API call ({model}) failed: {e}")
     return None
 
 
@@ -135,24 +127,31 @@ def fetch_us_top_news(count=3):
     - providerPublishTime 기준 최신순 정렬
     - 뉴욕 현지 시각(ET) 포맷 제공
     """
-    import pytz
-    ny_tz = pytz.timezone('America/New_York')
+    try:
+        from zoneinfo import ZoneInfo
+        ny_tz = ZoneInfo('America/New_York')
+    except Exception:
+        from datetime import timezone, timedelta
+        ny_tz = timezone(timedelta(hours=-4))
+
     now_ts = datetime.now().timestamp()
     cutoff_ts = now_ts - 36 * 3600
 
-    queries = [
-        ('stock market today', 25),
-        ('S&P 500', 15)
-    ]
-
     raw_items = []
-    for q, cnt in queries:
+    try:
+        s = yf.Search('stock market today', news_count=20, timeout=5)
+        if s.news:
+            raw_items.extend(s.news)
+    except Exception as e:
+        print(f"Yahoo Search (stock market today) failed: {e}")
+
+    if len(raw_items) < 3:
         try:
-            s = yf.Search(q, news_count=cnt)
-            if s.news:
-                raw_items.extend(s.news)
+            s2 = yf.Search('S&P 500', news_count=10, timeout=5)
+            if s2.news:
+                raw_items.extend(s2.news)
         except Exception as e:
-            print(f"Yahoo Search ({q}) failed: {e}")
+            print(f"Yahoo Search (S&P 500) failed: {e}")
 
     seen_titles = set()
     articles = []
