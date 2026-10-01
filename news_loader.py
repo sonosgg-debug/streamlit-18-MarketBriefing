@@ -35,8 +35,8 @@ def get_gemini_api_key():
 
 
 def call_gemini_generate(prompt: str, api_key: str):
-    """Google Gemini REST API 호출 (추가 SDK 설치 불필요)"""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    """Google Gemini REST API 호출 (최신 사용 가능 모델 순차 시도)"""
+    models_to_try = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
     payload = {
         "contents": [{
             "parts": [{"text": prompt}]
@@ -47,16 +47,20 @@ def call_gemini_generate(prompt: str, api_key: str):
         }
     }
     headers = {"Content-Type": "application/json"}
-    try:
-        res = requests.post(url, json=payload, headers=headers, timeout=7)
-        if res.status_code == 200:
-            data = res.json()
-            candidates = data.get('candidates', [])
-            if candidates:
-                text = candidates[0].get('content', {}).get('parts', [{}])[0].get('text', '')
-                return text.strip()
-    except Exception as e:
-        print(f"Gemini API call failed: {e}")
+
+    for model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        try:
+            res = requests.post(url, json=payload, headers=headers, timeout=8)
+            if res.status_code == 200:
+                data = res.json()
+                candidates = data.get('candidates', [])
+                if candidates:
+                    text = candidates[0].get('content', {}).get('parts', [{}])[0].get('text', '')
+                    if text:
+                        return text.strip()
+        except Exception as e:
+            print(f"Gemini API call ({model}) failed: {e}")
     return None
 
 
@@ -319,23 +323,31 @@ def generate_us_drivers_nlp(news_list, us_data=None):
 
 def parse_ai_response(text: str):
     """AI 모델 응답 텍스트를 문장 리스트와 태그로 파싱"""
+    if not text:
+        return {'sentences': [], 'tags': []}
+
     lines = [line.strip() for line in text.split('\n') if line.strip()]
     sentences = []
     tags = []
 
     for line in lines:
         if line.startswith('#'):
-            # 태그 줄
             for tag in line.split():
                 if tag.startswith('#'):
                     tags.append(tag)
         else:
-            # 번호나 불릿 제거
+            # 서두 안내문구 필터링 (예: "오늘의 시장 브리핑입니다")
+            if any(intro in line for intro in ['브리핑입니다', '요약입니다', '요약해 드립니다', '다음과 같습니다', '핵심 동인:']):
+                continue
+
             clean = line
-            for prefix in ['1.', '2.', '3.', '4.', '-', '•', '*']:
+            # 번호나 불릿 제거
+            for prefix in ['1.', '2.', '3.', '4.', '1)', '2)', '3)', '4)', '-', '•', '*']:
                 if clean.startswith(prefix):
                     clean = clean[len(prefix):].strip()
-            if len(clean) > 15:
+            # 볼드 마크다운 제거
+            clean = clean.replace('**', '').strip()
+            if len(clean) >= 20:
                 sentences.append(clean)
 
     if not tags:
@@ -361,14 +373,18 @@ def get_krx_market_drivers(krx_data=None):
 
 {news_context}
 
-오늘 한국 증시(코스피/코스닥)의 상승 또는 하락, 보합을 이끈 '핵심적인 동적 요인(Market Drivers)'을 3~4문장의 유려하고 논리적인 한국어로 브리핑해 주세요.
-각 문장은 인과관계(거시 변수, 수급 주체, 주도 섹터의 영향)가 명확해야 합니다.
-마지막 줄에는 핵심 키워드 해시태그 3~4개를 적어주세요 (예: #미국채금리 #외인기관동반매도 #반도체조정).
+오늘 한국 증시(코스피/코스닥)의 상승 또는 하락, 보합을 이끈 '핵심적인 동적 요인(Market Drivers)'을 인과관계 중심으로 3~4문장의 유려한 한국어로 브리핑해 주세요.
+반드시 아래 형식에 맞추어 작성해 주세요:
+1. (첫 번째 핵심 동인 문장)
+2. (두 번째 핵심 동인 문장)
+3. (세 번째 핵심 동인 문장)
+4. (네 번째 핵심 동인 문장)
+#핵심태그1 #핵심태그2 #핵심태그3
 """.strip()
         ai_resp = call_gemini_generate(prompt, api_key)
         if ai_resp:
             parsed = parse_ai_response(ai_resp)
-            if parsed['sentences']:
+            if len(parsed['sentences']) >= 2:
                 return {
                     'sentences': parsed['sentences'],
                     'tags': parsed['tags'],
@@ -407,14 +423,18 @@ def get_us_market_drivers(us_data=None):
 - S&P 500: {sp_ratio:+.2f}%, 나스닥: {nasdaq_ratio:+.2f}%, 미 10년물 국채금리: {tnx_rate:.2f}%
 {news_context}
 
-오늘 미국 증시의 흐름(상승/하락/혼조)을 이끈 '핵심적인 동적 요인(Market Drivers)'을 3~4문장의 유려하고 전문적인 한국어로 브리핑해 주세요.
-각 문장은 인과관계(채권 금리, 연준 정책, 빅테크 실적, 투자심리 등)가 명확해야 합니다.
-마지막 줄에는 핵심 키워드 해시태그 3~4개를 적어주세요 (예: #국채금리상승 #빅테크차익실현 #월말포트폴리오조정).
+오늘 미국 증시의 흐름(상승/하락/혼조)을 이끈 '핵심적인 동적 요인(Market Drivers)'을 인과관계 중심으로 3~4문장의 전문적인 한국어로 브리핑해 주세요.
+반드시 아래 형식에 맞추어 작성해 주세요:
+1. (첫 번째 핵심 동인 문장)
+2. (두 번째 핵심 동인 문장)
+3. (세 번째 핵심 동인 문장)
+4. (네 번째 핵심 동인 문장)
+#핵심태그1 #핵심태그2 #핵심태그3
 """.strip()
         ai_resp = call_gemini_generate(prompt, api_key)
         if ai_resp:
             parsed = parse_ai_response(ai_resp)
-            if parsed['sentences']:
+            if len(parsed['sentences']) >= 2:
                 return {
                     'sentences': parsed['sentences'],
                     'tags': parsed['tags'],
