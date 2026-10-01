@@ -263,7 +263,8 @@ def generate_us_briefing(us_data, is_live=False, time_str="", market_drivers=Non
         if articles:
             drivers_text += "[대표 기사 (Yahoo Finance)]\n"
             for a in articles:
-                drivers_text += f"- [{a.get('press', 'Yahoo Finance')}] {a.get('title', '')}\n"
+                time_str = f" ({a.get('time')})" if a.get('time') else ""
+                drivers_text += f"- [{a.get('press', 'Yahoo Finance')}] {a.get('title', '')}{time_str}\n"
         drivers_text += "\n"
 
     report_type_us = "실시간 장중 브리핑" if is_live else "마감 데일리 브리핑"

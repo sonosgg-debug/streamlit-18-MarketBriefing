@@ -56,20 +56,21 @@ def load_krx():
 def load_us():
     return data_loader.get_us_summary()
 
-@st.cache_data(ttl=300) # 뉴스 수집 및 브리핑 캐시 (5분 단위 갱신, _접두사로 해싱 충돌 방지)
-def load_krx_drivers(_krx_data):
+@st.cache_data(ttl=180) # 뉴스 수집 및 브리핑 캐시 (3분 단위 갱신, 날짜/장상태/토큰별 캐시 키 분리)
+def load_krx_drivers(target_date: str, is_live: bool, _krx_data, reload_token: int = 0):
     return news_loader.get_krx_market_drivers(_krx_data)
 
-@st.cache_data(ttl=300)
-def load_us_drivers(_us_data):
+@st.cache_data(ttl=180)
+def load_us_drivers(target_date: str, is_live: bool, _us_data, reload_token: int = 0):
     return news_loader.get_us_market_drivers(_us_data)
 
 
-def render_market_drivers_section(drivers: dict, source_name: str):
+def render_market_drivers_section(drivers: dict, source_name: str, target_date: str = ""):
     """
     오늘의 시장을 움직인 핵심 동인 (Market Drivers) UI 섹션 렌더링
     - 3~4문장 핵심 브리핑
     - 핵심 해시태그 뱃지
+    - AI 분석 엔진 뱃지 및 기준 일자 표기
     - 분석에 활용된 대표 뉴스 3선 (제목, 언론사, 링크)
     (마크다운 코드블록 오인 방지를 위해 들여쓰기 공백을 완전 제거한 스트링 생성)
     """
@@ -79,6 +80,10 @@ def render_market_drivers_section(drivers: dict, source_name: str):
     sentences = drivers.get('sentences', [])
     tags = drivers.get('tags', [])
     articles = drivers.get('articles', [])
+    engine = drivers.get('engine', 'Smart Engine')
+
+    engine_badge = f"<span class='driver-engine-badge'>{'🤖 Gemini AI 분석' if engine == 'Gemini AI' else '⚙️ 자체 스마트 엔진'}</span>"
+    date_badge = f"<span class='driver-date-badge'>기준일: {escape_markdown(target_date)}</span>" if target_date else ""
 
     tags_html = "".join([f"<span class='driver-tag'>{escape_markdown(tag)}</span>" for tag in tags])
 
@@ -115,7 +120,8 @@ def render_market_drivers_section(drivers: dict, source_name: str):
         f"<div class='market-drivers-container'>"
         f"<div class='market-drivers-header'>"
         f"<div class='market-drivers-title'>"
-        f"<span>🔥</span> 오늘의 시장을 움직인 핵심 동인 <span style='font-size: 0.85rem; font-weight: 500; color: #94a3b8;'>(Market Drivers)</span>"
+        f"<span>🔥</span> 오늘의 시장을 움직인 핵심 동인 <span style='font-size: 0.85rem; font-weight: 500; color: #94a3b8;'>(Market Drivers)</span> "
+        f"{engine_badge} {date_badge}"
         f"</div>"
         f"<div class='driver-tag-container'>{tags_html}</div>"
         f"</div>"
@@ -182,11 +188,14 @@ with st.sidebar:
     # 액션 버튼 (Update & 조회)
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
-        if st.button("🔄 Update", use_container_width=True, help="캐시를 초기화하고 최신 시황 및 지수를 다시 수집합니다."):
+        if st.button("🔄 Update", use_container_width=True, help="캐시를 초기화하고 최신 시황 및 뉴스를 새로 수집합니다."):
+            st.session_state['reload_token'] = st.session_state.get('reload_token', 0) + 1
             st.cache_data.clear()
             st.rerun()
     with col_btn2:
-        if st.button("🔍 조회", type="primary", use_container_width=True, help="선택한 시장으로 브리핑을 새로고침합니다."):
+        if st.button("🔍 조회", type="primary", use_container_width=True, help="선택한 시장으로 브리핑 및 마켓 드라이버를 새로고침합니다."):
+            st.session_state['reload_token'] = st.session_state.get('reload_token', 0) + 1
+            st.cache_data.clear()
             st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -233,7 +242,8 @@ with st.sidebar:
 if "KRX" in market_choice or "한국" in market_choice:
     # 한국 증시 (KRX) 화면
     data = load_krx()
-    krx_drivers = load_krx_drivers(data)
+    reload_tok = st.session_state.get('reload_token', 0)
+    krx_drivers = load_krx_drivers(data.get('date', ''), m_status['is_live'], data, reload_tok)
     briefing = summary_engine.generate_krx_briefing(data, is_live=m_status['is_live'], time_str=m_status['time_str'], market_drivers=krx_drivers)
     events = calendar_data.get_upcoming_events('KRX')
 
@@ -358,7 +368,7 @@ if "KRX" in market_choice or "한국" in market_choice:
     """, unsafe_allow_html=True)
 
     # [신설 코너] 오늘의 시장을 움직인 핵심 동인 (Market Drivers) - 네이버 증권 기반
-    render_market_drivers_section(krx_drivers, "네이버 증권")
+    render_market_drivers_section(krx_drivers, "네이버 증권", data.get('date', ''))
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -613,7 +623,8 @@ if "KRX" in market_choice or "한국" in market_choice:
 else:
     # 미국 증시 (US) 화면
     data = load_us()
-    us_drivers = load_us_drivers(data)
+    reload_tok = st.session_state.get('reload_token', 0)
+    us_drivers = load_us_drivers(data.get('date', ''), m_status['is_live'], data, reload_tok)
     briefing = summary_engine.generate_us_briefing(data, is_live=m_status['is_live'], time_str=m_status['time_str'], market_drivers=us_drivers)
     events = calendar_data.get_upcoming_events('US')
 
@@ -728,7 +739,7 @@ else:
     st.markdown(us_ribbon_html, unsafe_allow_html=True)
 
     # [신설 코너] 오늘의 시장을 움직인 핵심 동인 (Market Drivers) - Yahoo Finance 기반
-    render_market_drivers_section(us_drivers, "Yahoo Finance")
+    render_market_drivers_section(us_drivers, "Yahoo Finance", data.get('date', ''))
 
     # 2. 오늘의 시장 요약 (핵심 3선 + 심층 브리핑)
     section_summary_title = "📌 현재 장중 시장 상황 요약" if m_status['is_live'] else "📌 오늘의 시장 마감 요약"

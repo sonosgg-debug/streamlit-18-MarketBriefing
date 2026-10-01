@@ -708,6 +708,30 @@ section[data-testid="stSidebar"] {
         letter-spacing: -0.2px;
     }
 
+    .driver-engine-badge {
+        background: rgba(56, 189, 248, 0.12);
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        padding: 3px 9px;
+        border-radius: 6px;
+        font-size: 0.73rem;
+        font-weight: 600;
+        vertical-align: middle;
+        letter-spacing: -0.2px;
+    }
+
+    .driver-date-badge {
+        background: #1e293b;
+        color: #94a3b8;
+        border: 1px solid #475569;
+        padding: 3px 9px;
+        border-radius: 6px;
+        font-size: 0.73rem;
+        font-weight: 500;
+        vertical-align: middle;
+        letter-spacing: -0.2px;
+    }
+
     .driver-sentence-list {
         display: flex;
         flex-direction: column;

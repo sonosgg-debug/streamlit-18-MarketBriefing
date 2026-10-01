@@ -35,32 +35,41 @@ def get_gemini_api_key():
 
 
 def call_gemini_generate(prompt: str, api_key: str):
-    """Google Gemini REST API 호출 (최신 사용 가능 모델 순차 시도)"""
-    models_to_try = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+    """Google Gemini REST API 호출 (최신 사용 가능 모델 순차 시도 및 즉시 응답 최적화)"""
+    models_to_try = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.7-flash", "gemini-3.5-flash"]
     payload = {
         "contents": [{
             "parts": [{"text": prompt}]
         }],
         "generationConfig": {
             "temperature": 0.3,
-            "maxOutputTokens": 800
+            "maxOutputTokens": 800,
+            "thinkingConfig": {"thinkingBudget": 0}
         }
     }
     headers = {"Content-Type": "application/json"}
 
+    import time
     for model in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-        try:
-            res = requests.post(url, json=payload, headers=headers, timeout=8)
-            if res.status_code == 200:
-                data = res.json()
-                candidates = data.get('candidates', [])
-                if candidates:
-                    text = candidates[0].get('content', {}).get('parts', [{}])[0].get('text', '')
-                    if text:
-                        return text.strip()
-        except Exception as e:
-            print(f"Gemini API call ({model}) failed: {e}")
+        for attempt in range(2):
+            try:
+                res = requests.post(url, json=payload, headers=headers, timeout=15)
+                if res.status_code == 200:
+                    data = res.json()
+                    candidates = data.get('candidates', [])
+                    if candidates:
+                        text = candidates[0].get('content', {}).get('parts', [{}])[0].get('text', '')
+                        if text:
+                            return text.strip()
+                elif res.status_code in (429, 503):
+                    time.sleep(0.8)
+                    continue
+                else:
+                    break
+            except Exception as e:
+                print(f"Gemini API call ({model}) attempt {attempt+1} failed: {e}")
+                time.sleep(0.5)
     return None
 
 
@@ -122,60 +131,76 @@ def fetch_krx_top_news(count=3):
 def fetch_us_top_news(count=3):
     """
     Yahoo Finance에서 미국 증시 당일 장중/마감 대표 기사 선별
+    - 최신 36시간 이내 기사 대상 (장마감 및 당일 정규장 시황 집중)
+    - providerPublishTime 기준 최신순 정렬
+    - 뉴욕 현지 시각(ET) 포맷 제공
     """
-    articles = []
-    seen_titles = set()
+    import pytz
+    ny_tz = pytz.timezone('America/New_York')
+    now_ts = datetime.now().timestamp()
+    cutoff_ts = now_ts - 36 * 3600
 
-    # 1. 'stock market today' 검색 (야후 파이낸스 메인 시황 랩)
-    try:
-        s = yf.Search('stock market today', news_count=8)
-        if s.news:
-            for item in s.news:
-                title = item.get('title')
-                pub = item.get('publisher', 'Yahoo Finance')
-                link = item.get('link')
-                pub_time = item.get('providerPublishTime')
-                time_str = ""
-                if pub_time:
-                    try:
-                        time_str = datetime.fromtimestamp(pub_time).strftime('%m.%d %H:%M')
-                    except Exception:
-                        pass
-                if title and link and title not in seen_titles:
-                    seen_titles.add(title)
-                    articles.append({
-                        'title': title,
-                        'summary': '',
-                        'press': pub,
-                        'time': time_str,
-                        'link': link,
-                        'source': 'Yahoo Finance'
-                    })
-    except Exception as e:
-        print(f"Yahoo Search news failed: {e}")
+    queries = [
+        ('stock market today', 25),
+        ('S&P 500', 15)
+    ]
 
-    # 2. 보충: S&P 500 지수 연동 뉴스
-    if len(articles) < count:
+    raw_items = []
+    for q, cnt in queries:
         try:
-            s2 = yf.Search('S&P 500', news_count=5)
-            if s2.news:
-                for item in s2.news:
-                    title = item.get('title')
-                    pub = item.get('publisher', 'Yahoo Finance')
-                    link = item.get('link')
-                    if title and link and title not in seen_titles:
-                        seen_titles.add(title)
-                        articles.append({
-                            'title': title,
-                            'summary': '',
-                            'press': pub,
-                            'time': '',
-                            'link': link,
-                            'source': 'Yahoo Finance'
-                        })
-        except Exception:
-            pass
+            s = yf.Search(q, news_count=cnt)
+            if s.news:
+                raw_items.extend(s.news)
+        except Exception as e:
+            print(f"Yahoo Search ({q}) failed: {e}")
 
+    seen_titles = set()
+    articles = []
+
+    market_keywords = [
+        'stock market today', 'stocks', 'dow', 's&p', 'nasdaq', 'wall street',
+        'treasury', 'yields', 'rebound', 'comeback', 'indexes fared', 'close',
+        'fed', 'inflation', 'quarter', 'rally', 'equities', 'chips', 'tech'
+    ]
+
+    for it in raw_items:
+        title = it.get('title', '').strip()
+        link = it.get('link', '').strip()
+        pub_time = it.get('providerPublishTime')
+        pub = it.get('publisher', 'Yahoo Finance')
+
+        if not title or not link or title in seen_titles:
+            continue
+        seen_titles.add(title)
+
+        # 36시간 이전 구형 기사 제외
+        if pub_time and pub_time < cutoff_ts:
+            continue
+
+        t_lower = title.lower()
+        score = sum(1 for kw in market_keywords if kw in t_lower)
+
+        time_str = ""
+        if pub_time:
+            try:
+                dt_ny = datetime.fromtimestamp(pub_time, ny_tz)
+                time_str = dt_ny.strftime('%m.%d %H:%M ET')
+            except Exception:
+                pass
+
+        articles.append({
+            'title': title,
+            'summary': '',
+            'press': pub,
+            'time': time_str,
+            'pub_time': pub_time or 0,
+            'score': score,
+            'link': link,
+            'source': 'Yahoo Finance'
+        })
+
+    # 최신성(발행시각)과 시황 적합도(스코어) 기준 우선 정렬
+    articles.sort(key=lambda x: (x['score'] >= 1, x['pub_time']), reverse=True)
     return articles[:count]
 
 
@@ -257,7 +282,7 @@ def generate_krx_drivers_nlp(news_list, krx_data=None):
 
 
 def generate_us_drivers_nlp(news_list, us_data=None):
-    """미국 시장 핵심 동인 3~4문장 자체 스마트 요약 알고리즘 (Yahoo Finance 기반)"""
+    """미국 시장 핵심 동인 3~4문장 자체 스마트 요약 알고리즘 (Yahoo Finance 기사 및 시장 수치 기반)"""
     indices = (us_data or {}).get('indices', {})
     macro = (us_data or {}).get('macro', {})
 
@@ -275,42 +300,55 @@ def generate_us_drivers_nlp(news_list, us_data=None):
     sentences = []
     tags = []
 
-    # 1문장: 국채금리 및 통화정책 요인
-    if 'treasury' in all_titles or 'yield' in all_titles or tnx_chg > 0.03:
-        if tnx_chg >= 0:
-            sentences.append(f"미 국채 10년물 금리가 {tnx_val:.2f}% 수준으로 상승세를 이어가며 기술주와 고밸류에이션 성장주에 부담 요인으로 작용했습니다.")
-            tags.append("#미국채금리상승")
+    # 1문장: 국채금리 및 거시 환경 요인
+    has_yield_drop = any(w in all_titles for w in ['yields fall', 'recede', 'slump', 'drop', 'lower']) or tnx_chg < -0.01
+    has_yield_rise = any(w in all_titles for w in ['rising treasury', 'yields climb', 'higher yields']) or tnx_chg > 0.03
+
+    if has_yield_drop:
+        sentences.append(f"치솟던 미 국채 10년물 금리가 {tnx_val:.2f}% 선에서 하향 안정세를 나타내며, 증시 전반에 가해지던 긴축 경계감과 밸류에이션 부담을 덜어주었습니다.")
+        tags.append("#국채금리안정")
+    elif has_yield_rise:
+        sentences.append(f"미 국채 10년물 금리가 {tnx_val:.2f}% 수준으로 상승 압력을 가하며 고밸류에이션 기술주 및 지수 상단에 부담 요인으로 작용했습니다.")
+        tags.append("#미국채금리상승")
+    elif 'fed' in all_titles or 'inflation' in all_titles:
+        sentences.append("연준의 차기 금리 정책 경로와 주요 거시 경제 지표를 둘러싼 시장의 경계감이 지속되며 관망 심리가 형성되었습니다.")
+        tags.append("#연준정책주시")
+    else:
+        sentences.append(f"미 국채 10년물 금리가 {tnx_val:.2f}% 부근에서 안정적인 흐름을 유지하며 대외 매크로 변수를 소화하는 양상을 보였습니다.")
+        tags.append("#매크로관망")
+
+    # 2문장: 기업 실적 및 반도체/빅테크 흐름
+    has_chip = any(w in all_titles for w in ['chip', 'semiconductor', 'micron', 'nvidia', 'sox'])
+    has_tech = any(w in all_titles for w in ['tech', 'nasdaq', 'apple', 'microsoft'])
+
+    if has_chip:
+        if any(w in all_titles for w in ['reverses', 'gain', 'comeback', 'rise']) or nasdaq_ratio >= 0:
+            sentences.append("마이크론 등 주요 반도체 기업들의 반등과 함께 핵심 기술주를 중심으로 저가 매수세가 유입되며 나스닥 지수의 하방을 단단히 지지했습니다.")
+            tags.append("#반도체저가매수")
         else:
-            sentences.append(f"미 국채 10년물 금리가 {tnx_val:.2f}% 선으로 하향 안정세를 나타내며 시장의 긴축 경계감을 다소 완화시켰습니다.")
-            tags.append("#국채금리안정")
-    elif 'inflation' in all_titles or 'cpi' in all_titles:
-        sentences.append("주요 물가 지표가 시장 예상치를 밑돌며 인플레이션 둔화 신호를 보였으나, 연준의 추가 금리 인하 경로를 둘러싼 신중론이 교차했습니다.")
-        tags.append("#인플레이션지표")
+            sentences.append("반도체 및 하드웨어 섹터 내 차익 실현 매물이 출회되며 기술주 중심의 변동성이 이어졌습니다.")
+            tags.append("#기술주변동성")
+    elif has_tech or nasdaq_ratio > 0.3:
+        sentences.append("인공지능(AI) 및 대형 테크 기업들을 향한 투자 심리가 회복세를 보이며 지수 상승 전환의 견인차 역할을 했습니다.")
+        tags.append("#빅테크반등")
     else:
-        sentences.append("글로벌 거시 경제 지표 발표와 연방준비제도(Fed) 위원들의 발언을 앞두고 채권 시장과 증시 전반에 짙은 관망세가 형성되었습니다.")
-        tags.append("#연준관망세")
+        sentences.append("시가총액 상위 대형주 내에서 실적 전망과 밸류에이션 매력도에 따른 뚜렷한 업종별 차별화 장세가 전개되었습니다.")
+        tags.append("#대형주차별화")
 
-    # 2문장: 기업 실적 및 빅테크(M7) 흐름
-    if 'micron' in all_titles or 'nvidia' in all_titles or 'tech' in all_titles or 'earnings' in all_titles:
-        sentences.append("마이크론 등 주요 반도체 기업의 견조한 실적 발표와 대규모 자사주 매입 소식이 전해졌으나, 단기 급등에 따른 차익 실현 매물이 출회되며 기술주 내 혼조세가 나타났습니다.")
-        tags.append("#빅테크실적혼조")
-    elif nasdaq_ratio > 0.5:
-        sentences.append("인공지능(AI) 인프라 투자 지속 기대감에 힘입어 엔비디아 등 메가캡 기술주를 중심으로 반발 매수세가 유입되며 나스닥 상승을 주도했습니다.")
-        tags.append("#AI기술주강세")
+    # 3문장: 지수 종합 흐름 및 투자 심리
+    has_comeback = any(w in all_titles for w in ['comeback', 'rebound', 'slips', 'flat', 'rise']) or sp_ratio > 0
+    if has_comeback and sp_ratio >= 0:
+        sentences.append("장 초반의 변동성과 하락 압력을 딛고 장 후반으로 갈수록 매수세가 결집하며 주요 지수가 극적인 반등(컴백)에 성공했습니다.")
+        tags.append("#뉴욕증시컴백")
+    elif sp_ratio < 0:
+        sentences.append("고금리 장기화 리스크와 경기 둔화 우려 속에 지수 상단이 제한되며 조심스러운 박스권 흐름이 이어졌습니다.")
+        tags.append("#지수상단제한")
     else:
-        sentences.append("M7 메가캡 종목군에서는 호실적 기업과 차익 매물 출회 종목 간 차별화가 심화되며 지수 견인력이 분산되었습니다.")
-        tags.append("#메가캡차별화")
-
-    # 3문장: 시장 심리 및 월말/리밸런싱 요인
-    if 'monthly' in all_titles or sp_ratio < 0:
-        sentences.append("월말 포트폴리오 리밸런싱과 고금리 장기화에 대한 경계감이 맞물리며 다우와 S&P 500 등 주요 지수의 상단이 제한되는 압박을 받았습니다.")
-        tags.append("#월말포트폴리오조정")
-    else:
-        sentences.append("위험자산 전반에 대한 선호 심리가 방어력을 형성하며 주요 지수가 안정적인 지지선을 구축하는 흐름을 보였습니다.")
-        tags.append("#위험선호회복")
+        sentences.append("투자 주체 간 뚜렷한 방향성 베팅이 엇갈리며 보합권 공방 속에 시장의 지지력을 다지는 흐름을 나타냈습니다.")
+        tags.append("#보합권공방")
 
     # 4문장: 결론 및 관전 포인트
-    sentences.append("결과적으로 투자자들은 추가적인 고용 및 인플레이션 데이터 확인 전까지 공격적인 포지션 확대를 자제하며 숨고르기 장세를 이어가고 있습니다.")
+    sentences.append("결과적으로 투자자들은 채권 금리의 추가 안정 여부와 향후 예정된 주요 고용·물가 지표를 주시하며 신중한 대응을 이어가고 있습니다.")
 
     if not tags:
         tags = ["#뉴욕증시", "#야후파이낸스", "#월가동향"]
@@ -364,12 +402,13 @@ def get_krx_market_drivers(krx_data=None):
     """
     top_news = fetch_krx_top_news(count=3)
     api_key = get_gemini_api_key()
+    today_date = (krx_data or {}).get('date', '')
 
     if api_key and top_news:
         news_context = "\n".join([f"- [{n['press']}] {n['title']}: {n['summary'][:120]}" for n in top_news])
         prompt = f"""
 당신은 국내 최고 금융기관의 수석 시장 전략가입니다.
-아래는 오늘 네이버 증권에서 수집된 핵심 시황 뉴스 3편의 정보입니다.
+아래는 오늘({today_date}) 네이버 증권에서 수집된 핵심 시황 뉴스 3편의 정보입니다.
 
 {news_context}
 
@@ -408,6 +447,7 @@ def get_us_market_drivers(us_data=None):
     """
     top_news = fetch_us_top_news(count=3)
     api_key = get_gemini_api_key()
+    today_date = (us_data or {}).get('date', '')
 
     if api_key and top_news:
         news_context = "\n".join([f"- [{n['press']}] {n['title']}" for n in top_news])
@@ -419,7 +459,7 @@ def get_us_market_drivers(us_data=None):
 
         prompt = f"""
 당신은 월가 수석 시황 애널리스트입니다.
-아래는 오늘 Yahoo Finance에서 수집된 뉴욕 증시 핵심 기사 3편의 헤드라인과 시장 데이터입니다.
+아래는 오늘({today_date}) Yahoo Finance에서 수집된 뉴욕 증시 핵심 기사 3편의 헤드라인과 시장 데이터입니다.
 - S&P 500: {sp_ratio:+.2f}%, 나스닥: {nasdaq_ratio:+.2f}%, 미 10년물 국채금리: {tnx_rate:.2f}%
 {news_context}
 
