@@ -308,15 +308,31 @@ if "KRX" in market_choice or "한국" in market_choice:
             delta_color="inverse"
         )
     with k4:
-        if m_status['is_live']:
-            for_val = inv_kp.get('foreign', 0.0)
+        is_live = m_status.get('is_live', False)
+        status_code = m_status.get('status', '')
+        now_kst = data_loader.get_now_kst()
+        today_str = now_kst.strftime('%Y%m%d')
+
+        has_today_inv = (
+            inv_kp.get('is_today', False)
+            or inv_kp.get('bizdate') == today_str
+            or (inv_kp.get('foreign', 0.0) != 0 or inv_kp.get('personal', 0.0) != 0)
+        )
+
+        if is_live:
             kp_for_label = "코스피 외국인 순매매 (실시간)"
+            for_val = inv_kp.get('foreign', 0.0)
+        elif status_code == 'CLOSED' and has_today_inv:
+            b_date = str(inv_kp.get('bizdate', ''))
+            b_fmt = f"{b_date[4:6]}/{b_date[6:8]}" if len(b_date) == 8 else (now_kst.strftime('%m/%d'))
+            kp_for_label = f"코스피 외국인 순매매 (마감: {b_fmt})"
+            for_val = inv_kp.get('foreign', 0.0)
         else:
             inv_prev = data.get('investors_kospi_prev', {})
             prev_fmt = inv_prev.get('bizdate_fmt') or (inv_prev.get('date')[3:] if len(inv_prev.get('date', '')) >= 5 else '')
             badge = f"(마감: {prev_fmt})" if prev_fmt else "(마감)"
             kp_for_label = f"코스피 외국인 순매매 {badge}"
-            for_val = inv_prev.get('foreign', inv_kp.get('foreign', 0.0))
+            for_val = inv_prev.get('foreign', 0.0)
 
         st.metric(
             label=kp_for_label,
@@ -406,10 +422,12 @@ if "KRX" in market_choice or "한국" in market_choice:
     with col_chart:
         st.markdown("<div class='section-header'>💰 투자 주체별 수급 동향 (KOSPI)</div>", unsafe_allow_html=True)
         
-        tab_live, tab_prev = st.tabs(["🔴 당일 장중 실시간 잠정", "🏁 전일 마감 확정 수급"])
+        tab_today_title = "🔴 당일 장중 실시간 잠정" if m_status['is_live'] else "🏁 당일 마감 확정 수급"
+        tab_prev_title = "⏪ 전일 마감 확정 수급"
+        tab_live, tab_prev = st.tabs([tab_today_title, tab_prev_title])
 
         with tab_live:
-            # 1. 당일 실시간 바 차트
+            # 1. 당일 실시간/마감 바 차트
             is_pre_market = m_status.get('status') == 'PRE_MARKET'
             is_today = inv_kp.get('is_today', True)
             if is_pre_market or not is_today:
@@ -424,8 +442,12 @@ if "KRX" in market_choice or "한국" in market_choice:
 
             if m_status.get('status') == 'PRE_MARKET':
                 st.caption(f"📅 **현재 시각**: {m_status.get('current_time_str', '')} | ⏳ **개장 전 대기**: 현재 정규장 개장 전으로 실시간 잠정치는 0으로 표시됩니다. (직전 거래일 마감 확정치는 오른쪽 탭 참조)")
-            else:
+            elif m_status['is_live']:
                 st.caption(f"📅 **집계 기준**: {m_status.get('current_time_str', '')}{live_time_str} | 💡 주요 거래원 상위 5개사 기반 실시간 잠정치")
+            else:
+                b_date = str(inv_kp.get('bizdate', ''))
+                b_fmt = f"20{b_date[2:4]}.{b_date[4:6]}.{b_date[6:8]}" if len(b_date) == 8 else m_status.get('time_str', '')
+                st.caption(f"📅 **집계 기준**: {b_fmt} 정규장 마감 확정치 (한국거래소 공식 정산 집계)")
 
             color_p = '#f59e0b' if p_val > 0 else ('#d97706' if p_val < 0 else '#64748b')  # 개인: 골드/앰버 (0: 슬레이트)
             color_f = '#8b5cf6' if f_val > 0 else ('#6366f1' if f_val < 0 else '#64748b')  # 외국인: 바이올렛/퍼플 (0: 슬레이트)

@@ -452,14 +452,34 @@ def get_investor_trend_history(sosok='01'):
                     'other_corp': round(prev_row['other_corp'], 1)
                 }
 
+                today_data = None
+                if rows and rows[0]['bizdate'] == today_str:
+                    today_data = {
+                        'date': rows[0]['date'],
+                        'bizdate': rows[0]['bizdate'],
+                        'bizdate_fmt': rows[0]['bizdate_fmt'],
+                        'personal': round(rows[0]['personal'], 1),
+                        'foreign': round(rows[0]['foreign'], 1),
+                        'institutional': round(rows[0]['institutional'], 1),
+                        'financial_invest': round(rows[0]['financial_invest'], 1),
+                        'insurance': round(rows[0]['insurance'], 1),
+                        'investment_trust': round(rows[0]['investment_trust'], 1),
+                        'bank': round(rows[0]['bank'], 1),
+                        'other_finance': round(rows[0]['other_finance'], 1),
+                        'pension': round(rows[0]['pension'], 1),
+                        'other_corp': round(rows[0]['other_corp'], 1),
+                        'is_today': True
+                    }
+
                 return {
+                    'today': today_data,
                     'prev': prev_data,
                     'history': df.head(6)
                 }
     except Exception as e:
         print(f"Error fetching investor trend history for {market_type}: {e}")
 
-    return {'prev': {}, 'history': pd.DataFrame()}
+    return {'today': None, 'prev': {}, 'history': pd.DataFrame()}
 
 def fetch_index_price(index_code):
     """네이버 모바일 API로 지수 정보 수집 (KOSPI, KOSDAQ)"""
@@ -811,8 +831,17 @@ def get_krx_summary():
         result['investors_kosdaq_prev'] = hist_kd.get('prev', {})
         result['investors_history_kosdaq'] = hist_kd.get('history', pd.DataFrame())
 
-        result['investors_kospi'] = f_kp_trend.result()
-        result['investors_kosdaq'] = f_kd_trend.result()
+        kp_trend = f_kp_trend.result()
+        if (not kp_trend.get('is_today') or (kp_trend.get('foreign') == 0 and kp_trend.get('institutional') == 0 and kp_trend.get('personal') == 0)) and hist_kp.get('today'):
+            result['investors_kospi'] = hist_kp['today']
+        else:
+            result['investors_kospi'] = kp_trend
+
+        kd_trend = f_kd_trend.result()
+        if (not kd_trend.get('is_today') or (kd_trend.get('foreign') == 0 and kd_trend.get('institutional') == 0 and kd_trend.get('personal') == 0)) and hist_kd.get('today'):
+            result['investors_kosdaq'] = hist_kd['today']
+        else:
+            result['investors_kosdaq'] = kd_trend
         result['program'] = f_prog.result()
         result['exchange_rate'] = f_fx.result()
         result['breadth'] = f_breadth.result()
