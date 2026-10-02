@@ -36,7 +36,7 @@ def get_gemini_api_key():
 
 def call_gemini_generate(prompt: str, api_key: str):
     """Google Gemini REST API 호출 (최신 사용 가능 모델 순차 시도 및 즉시 응답 최적화)"""
-    models_to_try = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.7-flash", "gemini-3.5-flash"]
+    models_to_try = ["gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-3.8-flash"]
     payload = {
         "contents": [{
             "parts": [{"text": prompt}]
@@ -52,7 +52,7 @@ def call_gemini_generate(prompt: str, api_key: str):
     for model in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         try:
-            res = requests.post(url, json=payload, headers=headers, timeout=5)
+            res = requests.post(url, json=payload, headers=headers, timeout=6)
             if res.status_code == 200:
                 data = res.json()
                 candidates = data.get('candidates', [])
@@ -68,6 +68,7 @@ def call_gemini_generate(prompt: str, api_key: str):
 def fetch_krx_top_news(count=3):
     """
     네이버 증권 모바일 API에서 당일 장중/마감 시황 핵심 뉴스 선별
+    - 시간 가중치 및 당일 기사 우선 선별로 실시간 최신 시황 반영
     """
     url = 'https://m.stock.naver.com/api/news/list?category=mainnews&pageSize=35'
     try:
@@ -81,10 +82,12 @@ def fetch_krx_top_news(count=3):
 
     scored_news = []
     keywords = {
-        '코스피': 5, '코스닥': 5, '증시': 4, '시황': 5, '마감': 4, '장중': 3,
+        '코스피': 5, '코스닥': 5, '증시': 4, '시황': 5, '마감': 4, '장중': 4,
         '상승': 2, '하락': 2, '혼조': 3, '외인': 3, '기관': 3, '외국인': 3,
-        '금리': 3, '환율': 3, '반도체': 2, '국채': 3, '물가': 2, '긴축': 2
+        '금리': 3, '환율': 3, '반도체': 2, '국채': 3, '물가': 2, '긴축': 2,
+        '유가': 3, '고용': 3, '보합': 3, '등락': 3
     }
+    now_dt_str = datetime.now().strftime('%Y%m%d')
 
     for it in items:
         tit = it.get('tit', '')
@@ -95,11 +98,25 @@ def fetch_krx_top_news(count=3):
         dt = it.get('dt', '')
 
         # 개별 종목 단순 공시, 테마주 잡음 필터링
-        if any(bad in tit for bad in ['[특징주]', '인사', '부음', '포토', '골프', '코인']):
+        if any(bad in tit for bad in ['[특징주]', '인사', '부음', '포토', '골프', '코인', '동정', '사설', '부고']):
             continue
 
         score = sum(weight for kw, weight in keywords.items() if kw in tit) * 2
         score += sum(weight for kw, weight in keywords.items() if kw in sub)
+
+        # 시간 가중치: 당일 기사 및 최신 시간대 추가 가산점
+        if dt.startswith(now_dt_str):
+            score += 4
+            try:
+                pub_hour = int(dt[8:10])
+                current_hour = datetime.now().hour
+                hour_diff = max(0, current_hour - pub_hour)
+                if hour_diff <= 2:
+                    score += 4
+                elif hour_diff <= 4:
+                    score += 2
+            except Exception:
+                pass
 
         if score >= 4:
             time_str = ""
@@ -112,11 +129,12 @@ def fetch_krx_top_news(count=3):
                 'summary': sub,
                 'press': ohnm,
                 'time': time_str,
+                'dt': dt,
                 'link': f"https://n.news.naver.com/mnews/article/{oid}/{aid}",
                 'source': '네이버 증권'
             })
 
-    scored_news.sort(key=lambda x: x['score'], reverse=True)
+    scored_news.sort(key=lambda x: (x['score'], x.get('dt', '')), reverse=True)
     return scored_news[:count]
 
 
@@ -203,13 +221,31 @@ def fetch_us_top_news(count=3):
     return articles[:count]
 
 
-def generate_krx_drivers_nlp(news_list, krx_data=None):
-    """한국 시장 핵심 동인 3~4문장 자체 스마트 추출 알고리즘"""
+def generate_krx_drivers_nlp(news_list, krx_data=None, is_live=False):
+    """
+    한국 시장 핵심 동인 3~4문장 지능형 추출(Extractive Synthesis) 알고리즘
+    - 실제 수집된 최신 기사 헤드라인 및 본문 요약에서 동적 동인 추출
+    - 정규장 실시간(is_live=True) vs 마감(is_live=False) 시제 및 문맥 분기
+    - 실제 지수 등락률 및 투자 주체별 수급 데이터 결합
+    """
+    kospi = (krx_data or {}).get('kospi', {})
+    kosdaq = (krx_data or {}).get('kosdaq', {})
+    inv = (krx_data or {}).get('investors_kospi', {})
+
+    kp_p = kospi.get('price', 0.0)
+    kp_r = kospi.get('ratio', 0.0)
+    kd_p = kosdaq.get('price', 0.0)
+    kd_r = kosdaq.get('ratio', 0.0)
+
+    kp_for = inv.get('foreign', 0.0)
+    kp_inst = inv.get('institutional', 0.0)
+
     if not news_list:
+        action_verb = "보이고 있습니다" if is_live else "마감했습니다"
         return {
             'sentences': [
-                "당일 장중 글로벌 매크로 지표 관망 심리와 대외 변수를 주시하며 관망세가 짙은 흐름입니다.",
-                "외국인과 기관의 수급 공방 속에 지수의 방향성이 제한되고 있습니다.",
+                f"당일 코스피는 {kp_p:,.2f}pt({kp_r:+.2f}%) 수준에서 글로벌 매크로 지표 관망 심리와 대외 변수를 주시하며 흐름을 {action_verb}.",
+                "외국인과 기관의 수급 공방 속에 지수의 방향성이 제한되는 양상이 이어지고 있습니다.",
                 "대형주 중심의 차별화 장세가 이어지며 개별 실적 모멘텀에 따른 순환매가 전개되고 있습니다."
             ],
             'tags': ["#관망세", "#수급공방", "#개별종목장세"]
@@ -217,59 +253,103 @@ def generate_krx_drivers_nlp(news_list, krx_data=None):
 
     all_text = " ".join([f"{n.get('title', '')} {n.get('summary', '')}" for n in news_list])
 
-    has_rates = any(w in all_text for w in ['금리', '국채', '10년물', '긴축'])
-    has_semicon = any(w in all_text for w in ['반도체', '마이크론', '삼성전자', '하이닉스'])
-    has_fx = any(w in all_text for w in ['환율', '달러'])
-    has_supply = any(w in all_text for w in ['외인', '외국인', '기관', '동반', '쌍끌이', '순매도', '순매수', '팔자', '사자'])
-    has_drop = any(w in all_text for w in ['하락', '약세', '뒷걸음', '쇼크', '부담', '하방', '급락'])
-    has_rise = any(w in all_text for w in ['상승', '강세', '반등', '훈풍', '급등', '서프라이즈', '랠리'])
-
     sentences = []
     tags = []
 
-    # 1문장: 거시 환경 & 금리/대외 변수
-    if has_rates and has_drop:
-        sentences.append("미국 국채금리 고공행진과 글로벌 긴축 장기화 우려가 투자심리를 짓누르며 증시 전반에 강한 하방 압력으로 작용했습니다.")
-        tags.append("#미국채금리상승")
-    elif has_rates and has_rise:
-        sentences.append("미국 국채금리 안정세와 글로벌 통화 완화 기대감이 위험자산 선호 심리를 자극하며 지수 반등을 견인했습니다.")
-        tags.append("#금리안정세")
-    elif has_fx:
-        sentences.append("달러화 강세와 원/달러 환율 변동성 확대가 이어지며 외국인 수급 환경에 대한 경계감을 높였습니다.")
+    # 1. 거시 환경 & 지수 종합 흐름
+    macro_items = []
+    if '유가' in all_text:
+        macro_items.append("국제유가 상승")
+        tags.append("#국제유가상승")
+    if any(k in all_text for k in ['금리', '국채', '10년물']):
+        macro_items.append("미 국채금리 변동성")
+        tags.append("#국채금리변동")
+    if any(k in all_text for k in ['고용', '지표', '경계심리']):
+        macro_items.append("미국 고용지표 발표 대기 경계감")
+        tags.append("#미고용지표대기")
+    if '환율' in all_text or '달러' in all_text:
+        macro_items.append("원/달러 환율 변동")
         tags.append("#환율변동성")
-    else:
-        sentences.append("간밤 뉴욕 증시의 엇갈린 흐름과 대외 경제 지표 발표를 앞둔 관망세가 국내 증시의 출발 분위기를 형성했습니다.")
-        tags.append("#대외관망세")
 
-    # 2문장: 주도 섹터(반도체/2차전지 등) 및 실적 이슈
-    if has_semicon:
-        if '마이크론' in all_text:
-            sentences.append("마이크론의 깜짝 호실적 발표에도 불구하고 밸류에이션 부담과 고금리 우려가 겹치며 국내 반도체 대표주(삼성전자, SK하이닉스)는 차익 매물을 소화하는 약세를 보였습니다.")
-            tags.append("#반도체차익실현")
+    macro_str = ", ".join(macro_items[:2]) if macro_items else "대외 매크로 변수와 관망 심리"
+
+    if is_live:
+        if abs(kp_r) < 0.3:
+            s1 = f"{macro_str}이 발목을 잡으며 코스피는 {kp_p:,.2f}pt({kp_r:+.2f}%) 선에서 뚜렷한 방향성 없이 보합권 등락을 이어가고 있습니다."
+        elif kp_r > 0:
+            s1 = f"{macro_str}에도 불구하고 코스피는 {kp_p:,.2f}pt({kp_r:+.2f}%)로 상승세를 나타내며 지수 하방을 견고히 지지하고 있습니다."
         else:
-            sentences.append("반도체와 2차전지 등 핵심 시총 상위 대형주들이 엇갈린 주가 흐름을 나타내며 업종별 뚜렷한 순환매 양상이 전개되었습니다.")
-            tags.append("#대형주순환매")
+            s1 = f"{macro_str}이 하방 압력으로 작용하며 코스피가 {kp_p:,.2f}pt({kp_r:+.2f}%)로 후퇴해 약세 흐름을 보이고 있습니다."
     else:
-        sentences.append("업종별로는 경기 방어주와 밸류업 수혜주를 중심으로 선별적 매수세가 유입되며 지수 하단을 지지했습니다.")
-        tags.append("#방어주유입")
+        if abs(kp_r) < 0.3:
+            s1 = f"{macro_str}의 영향으로 코스피는 {kp_p:,.2f}pt({kp_r:+.2f}%) 보합권에서 장을 마쳤습니다."
+        elif kp_r > 0:
+            s1 = f"{macro_str} 속에서도 매수세가 유입되며 코스피는 {kp_p:,.2f}pt({kp_r:+.2f}%) 상승 마감했습니다."
+        else:
+            s1 = f"{macro_str}에 따른 투자심리 위축으로 코스피는 {kp_p:,.2f}pt({kp_r:+.2f}%) 하락 마감했습니다."
+    sentences.append(s1)
 
-    # 3문장: 수급 주체 동향
-    if has_supply:
-        if '순매도' in all_text or '팔자' in all_text or (krx_data and krx_data.get('investors_kospi', {}).get('foreign', 0) < 0):
-            sentences.append("유가증권시장에서 외국인과 기관이 동반 순매도세를 이어가며 지수 반등의 탄력을 제한했고, 개인이 홀로 매물을 흡수하는 양상이 이어졌습니다.")
+    # 2. 섹터 & 기사 핵심 팩트
+    if any(k in all_text for k in ['900선', '900']) and '코스닥' in all_text:
+        tags.append("#코스닥900선공방")
+        if is_live:
+            s2 = f"코스닥 지수는 {kd_p:,.2f}pt({kd_r:+.2f}%)를 기록하며 장중 900선 돌파 및 안착을 시도하는 등 양대 지수 간 뚜렷한 차별화 장세가 두드러지고 있습니다."
+        else:
+            s2 = f"코스닥 지수는 {kd_p:,.2f}pt({kd_r:+.2f}%)로 마감하며 900선 공방 속 양대 지수 간 차별화 장세가 나타났습니다."
+    elif any(k in all_text for k in ['반도체', '삼성전자', '삼전', '하이닉스']):
+        tags.append("#반도체대형주흐름")
+        if is_live:
+            s2 = "반도체 대표주(삼성전자, SK하이닉스)와 시총 상위 대형주들이 업종별로 엇갈린 주가 흐름을 보이며 차익실현 매물을 소화하고 있습니다."
+        else:
+            s2 = "반도체 대표주와 시총 상위 대형주들이 엇갈린 주가 흐름을 나타내며 업종별 순환매 장세로 장을 마쳤습니다."
+    else:
+        if is_live:
+            s2 = "시가총액 상위 대형주 전반에서 실적 모멘텀과 밸류에이션 매력도에 따른 종목별 순환매가 전개되고 있습니다."
+        else:
+            s2 = "대형주 전반에서 개별 실적 모멘텀에 따른 차별화 순환매가 전개되었습니다."
+    sentences.append(s2)
+
+    # 3. 수급 주체 동향 (실제 외국인/기관 수치 결합)
+    if kp_for != 0 or kp_inst != 0:
+        for_str = f"외국인이 {kp_for:+,.0f}억원"
+        inst_str = f"기관이 {kp_inst:+,.0f}억원"
+        if kp_for < 0 and kp_inst < 0:
             tags.append("#외인기관동반매도")
+            if is_live:
+                s3 = f"수급 측면에서는 유가증권시장에서 {for_str}, {inst_str} 규모의 동반 순매도세가 출회되어 지수 반등의 탄력을 제한하고 있습니다."
+            else:
+                s3 = f"수급 측면에서는 유가증권시장에서 {for_str}, {inst_str} 규모의 동반 순매도가 출회되며 장 막판까지 지수 상단을 제약했습니다."
+        elif kp_for > 0 and kp_inst > 0:
+            tags.append("#외인기관쌍끌이")
+            if is_live:
+                s3 = f"수급 측면에서는 유가증권시장에서 {for_str}, {inst_str} 규모의 쌍끌이 순매수가 유입되며 지수 상승 탄력을 견인하고 있습니다."
+            else:
+                s3 = f"수급 측면에서는 유가증권시장에서 {for_str}, {inst_str} 규모의 쌍끌이 순매수가 유입되며 견조한 상승세를 이끌었습니다."
+        elif kp_for < 0:
+            tags.append("#외인순매도")
+            if is_live:
+                s3 = f"수급 측면에서는 {for_str} 규모의 순매도세가 이어지는 가운데, 기관과 개인이 매물을 분할 흡수하며 치열한 수급 공방을 벌이고 있습니다."
+            else:
+                s3 = f"수급 측면에서는 {for_str} 규모의 순매도가 지속된 가운데 기관이 방어적 매수에 나서며 장을 마쳤습니다."
         else:
-            sentences.append("수급 측면에서는 외국인의 선별적 순매수 유입과 기관의 프로그램 매매 방향성에 따라 지수의 등락 폭이 결정되었습니다.")
-            tags.append("#수급공방")
+            tags.append("#외인순매수")
+            if is_live:
+                s3 = f"수급 측면에서는 {for_str} 규모의 외국인 매수 우위가 지수 하방을 지지하는 핵심 버팀목 역할을 하고 있습니다."
+            else:
+                s3 = f"수급 측면에서는 {for_str} 규모의 외국인 순매수가 유입되며 지수 하방을 지지했습니다."
     else:
-        sentences.append("투자 주체 간 뚜렷한 방향성 베팅이 부재한 가운데 장중 수급 변화에 따라 지수가 좁은 박스권 등락을 반복했습니다.")
-        tags.append("#박스권공방")
+        if is_live:
+            s3 = "장중 투자 주체 간 뚜렷한 방향성 베팅이 엇갈리며 프로그램 매매 추이에 따라 지수 등락이 좌우되고 있습니다."
+        else:
+            s3 = "투자 주체 간 뚜렷한 방향성 베팅이 부재한 가운데 프로그램 매매 추이에 따라 등락을 마쳤습니다."
+    sentences.append(s3)
 
-    # 4문장: 종합 시장 평가 및 관전 포인트
-    if has_drop:
-        sentences.append("결과적으로 고금리 장기화 리스크와 차익실현 욕구가 맞물려 단기 지지선 안착을 시험하는 숨고르기 장세가 지속되고 있습니다.")
+    # 4. 결론 및 관전 포인트
+    if is_live:
+        s4 = "시장 참여자들은 대외 매크로 불확실성과 오후장 수급 주체들의 추가 포지션 변화를 주시하며 신중한 대응을 이어가고 있습니다."
     else:
-        sentences.append("결과적으로 긍정적인 기업 실적 모멘텀과 대외 불확실성 해소 여부가 향후 시장의 추가 반등 동력을 결정할 핵심 변수로 꼽힙니다.")
+        s4 = "결과적으로 향후 발표될 대외 거시경제 지표 결과와 3분기 기업 실적 가이던스가 시장의 추가 반등 동력을 결정할 핵심 관전 포인트입니다."
+    sentences.append(s4)
 
     if not tags:
         tags = ["#국내증시", "#시황동향", "#수급체크"]
@@ -280,8 +360,8 @@ def generate_krx_drivers_nlp(news_list, krx_data=None):
     }
 
 
-def generate_us_drivers_nlp(news_list, us_data=None):
-    """미국 시장 핵심 동인 3~4문장 자체 스마트 요약 알고리즘 (Yahoo Finance 기사 및 시장 수치 기반)"""
+def generate_us_drivers_nlp(news_list, us_data=None, is_live=False):
+    """미국 시장 핵심 동인 3~4문장 지능형 추출 알고리즘 (Yahoo Finance 기사 및 시장 수치 기반)"""
     indices = (us_data or {}).get('indices', {})
     macro = (us_data or {}).get('macro', {})
 
@@ -304,17 +384,29 @@ def generate_us_drivers_nlp(news_list, us_data=None):
     has_yield_rise = any(w in all_titles for w in ['rising treasury', 'yields climb', 'higher yields']) or tnx_chg > 0.03
 
     if has_yield_drop:
-        sentences.append(f"치솟던 미 국채 10년물 금리가 {tnx_val:.2f}% 선에서 하향 안정세를 나타내며, 증시 전반에 가해지던 긴축 경계감과 밸류에이션 부담을 덜어주었습니다.")
         tags.append("#국채금리안정")
+        if is_live:
+            sentences.append(f"치솟던 미 국채 10년물 금리가 {tnx_val:.2f}% 선에서 하향 안정세를 나타내며, 기술주 및 지수 전반에 우호적인 투자 환경을 제공하고 있습니다.")
+        else:
+            sentences.append(f"치솟던 미 국채 10년물 금리가 {tnx_val:.2f}% 선에서 하향 안정세를 나타내며, 증시 전반에 가해지던 긴축 경계감과 밸류에이션 부담을 덜어주었습니다.")
     elif has_yield_rise:
-        sentences.append(f"미 국채 10년물 금리가 {tnx_val:.2f}% 수준으로 상승 압력을 가하며 고밸류에이션 기술주 및 지수 상단에 부담 요인으로 작용했습니다.")
         tags.append("#미국채금리상승")
+        if is_live:
+            sentences.append(f"미 국채 10년물 금리가 {tnx_val:.2f}% 수준으로 상승 압력을 가하며 고밸류에이션 기술주 및 지수 상단에 부담 요인으로 작용하고 있습니다.")
+        else:
+            sentences.append(f"미 국채 10년물 금리가 {tnx_val:.2f}% 수준으로 상승 압력을 가하며 고밸류에이션 기술주 및 지수 상단에 부담 요인으로 작용했습니다.")
     elif 'fed' in all_titles or 'inflation' in all_titles:
-        sentences.append("연준의 차기 금리 정책 경로와 주요 거시 경제 지표를 둘러싼 시장의 경계감이 지속되며 관망 심리가 형성되었습니다.")
         tags.append("#연준정책주시")
+        if is_live:
+            sentences.append("연준의 차기 금리 정책 경로와 주요 거시 경제 지표를 둘러싼 시장의 경계감이 지속되며 조심스러운 관망세가 형성되고 있습니다.")
+        else:
+            sentences.append("연준의 차기 금리 정책 경로와 주요 거시 경제 지표를 둘러싼 시장의 경계감이 지속되며 관망 심리가 형성되었습니다.")
     else:
-        sentences.append(f"미 국채 10년물 금리가 {tnx_val:.2f}% 부근에서 안정적인 흐름을 유지하며 대외 매크로 변수를 소화하는 양상을 보였습니다.")
         tags.append("#매크로관망")
+        if is_live:
+            sentences.append(f"미 국채 10년물 금리가 {tnx_val:.2f}% 부근에서 안정적인 흐름을 유지하며 대외 매크로 변수를 소화하는 양상을 나타내고 있습니다.")
+        else:
+            sentences.append(f"미 국채 10년물 금리가 {tnx_val:.2f}% 부근에서 안정적인 흐름을 유지하며 대외 매크로 변수를 소화하는 양상을 보였습니다.")
 
     # 2문장: 기업 실적 및 반도체/빅테크 흐름
     has_chip = any(w in all_titles for w in ['chip', 'semiconductor', 'micron', 'nvidia', 'sox'])
@@ -322,32 +414,56 @@ def generate_us_drivers_nlp(news_list, us_data=None):
 
     if has_chip:
         if any(w in all_titles for w in ['reverses', 'gain', 'comeback', 'rise']) or nasdaq_ratio >= 0:
-            sentences.append("마이크론 등 주요 반도체 기업들의 반등과 함께 핵심 기술주를 중심으로 저가 매수세가 유입되며 나스닥 지수의 하방을 단단히 지지했습니다.")
             tags.append("#반도체저가매수")
+            if is_live:
+                sentences.append("마이크론 등 주요 반도체 기업들의 반등과 함께 핵심 기술주를 중심으로 저가 매수세가 유입되며 나스닥 지수의 하방을 단단히 지지하고 있습니다.")
+            else:
+                sentences.append("마이크론 등 주요 반도체 기업들의 반등과 함께 핵심 기술주를 중심으로 저가 매수세가 유입되며 나스닥 지수의 하방을 단단히 지지했습니다.")
         else:
-            sentences.append("반도체 및 하드웨어 섹터 내 차익 실현 매물이 출회되며 기술주 중심의 변동성이 이어졌습니다.")
             tags.append("#기술주변동성")
+            if is_live:
+                sentences.append("반도체 및 하드웨어 섹터 내 차익 실현 매물이 출회되며 기술주 중심의 장중 변동성이 이어지고 있습니다.")
+            else:
+                sentences.append("반도체 및 하드웨어 섹터 내 차익 실현 매물이 출회되며 기술주 중심의 변동성이 이어졌습니다.")
     elif has_tech or nasdaq_ratio > 0.3:
-        sentences.append("인공지능(AI) 및 대형 테크 기업들을 향한 투자 심리가 회복세를 보이며 지수 상승 전환의 견인차 역할을 했습니다.")
         tags.append("#빅테크반등")
+        if is_live:
+            sentences.append("인공지능(AI) 및 대형 테크 기업들을 향한 투자 심리가 회복세를 보이며 지수 상승 전환의 견인차 역할을 하고 있습니다.")
+        else:
+            sentences.append("인공지능(AI) 및 대형 테크 기업들을 향한 투자 심리가 회복세를 보이며 지수 상승 전환의 견인차 역할을 했습니다.")
     else:
-        sentences.append("시가총액 상위 대형주 내에서 실적 전망과 밸류에이션 매력도에 따른 뚜렷한 업종별 차별화 장세가 전개되었습니다.")
         tags.append("#대형주차별화")
+        if is_live:
+            sentences.append("시가총액 상위 대형주 내에서 실적 전망과 밸류에이션 매력도에 따른 뚜렷한 업종별 차별화 장세가 전개되고 있습니다.")
+        else:
+            sentences.append("시가총액 상위 대형주 내에서 실적 전망과 밸류에이션 매력도에 따른 뚜렷한 업종별 차별화 장세가 전개되었습니다.")
 
     # 3문장: 지수 종합 흐름 및 투자 심리
     has_comeback = any(w in all_titles for w in ['comeback', 'rebound', 'slips', 'flat', 'rise']) or sp_ratio > 0
     if has_comeback and sp_ratio >= 0:
-        sentences.append("장 초반의 변동성과 하락 압력을 딛고 장 후반으로 갈수록 매수세가 결집하며 주요 지수가 극적인 반등(컴백)에 성공했습니다.")
         tags.append("#뉴욕증시컴백")
+        if is_live:
+            sentences.append("장 초반의 변동성과 하락 압력을 딛고 매수세가 유입되며 주요 지수가 견조한 반등 흐름을 이어가고 있습니다.")
+        else:
+            sentences.append("장 초반의 변동성과 하락 압력을 딛고 장 후반으로 갈수록 매수세가 결집하며 주요 지수가 극적인 반등(컴백)에 성공했습니다.")
     elif sp_ratio < 0:
-        sentences.append("고금리 장기화 리스크와 경기 둔화 우려 속에 지수 상단이 제한되며 조심스러운 박스권 흐름이 이어졌습니다.")
         tags.append("#지수상단제한")
+        if is_live:
+            sentences.append("고금리 장기화 리스크와 경기 둔화 우려 속에 지수 상단이 제한되며 조심스러운 박스권 흐름이 이어지고 있습니다.")
+        else:
+            sentences.append("고금리 장기화 리스크와 경기 둔화 우려 속에 지수 상단이 제한되며 조심스러운 박스권 흐름이 이어졌습니다.")
     else:
-        sentences.append("투자 주체 간 뚜렷한 방향성 베팅이 엇갈리며 보합권 공방 속에 시장의 지지력을 다지는 흐름을 나타냈습니다.")
         tags.append("#보합권공방")
+        if is_live:
+            sentences.append("투자 주체 간 뚜렷한 방향성 베팅이 엇갈리며 보합권 공방 속에 시장의 지지력을 다지는 흐름을 나타내고 있습니다.")
+        else:
+            sentences.append("투자 주체 간 뚜렷한 방향성 베팅이 엇갈리며 보합권 공방 속에 시장의 지지력을 다지는 흐름을 나타냈습니다.")
 
     # 4문장: 결론 및 관전 포인트
-    sentences.append("결과적으로 투자자들은 채권 금리의 추가 안정 여부와 향후 예정된 주요 고용·물가 지표를 주시하며 신중한 대응을 이어가고 있습니다.")
+    if is_live:
+        sentences.append("결과적으로 투자자들은 채권 금리의 추가 변동성과 주요 고용·물가 지표를 주시하며 신중한 대응을 이어가고 있습니다.")
+    else:
+        sentences.append("결과적으로 투자자들은 채권 금리의 추가 안정 여부와 향후 예정된 주요 고용·물가 지표를 주시하며 신중한 대응을 이어가고 있습니다.")
 
     if not tags:
         tags = ["#뉴욕증시", "#야후파이낸스", "#월가동향"]
@@ -395,7 +511,7 @@ def parse_ai_response(text: str):
     }
 
 
-def get_krx_market_drivers(krx_data=None):
+def get_krx_market_drivers(krx_data=None, is_live=False):
     """
     한국 증시(KRX) 오늘의 시장을 움직인 핵심 동인 브리핑 & 대표 뉴스 3선
     """
@@ -405,13 +521,32 @@ def get_krx_market_drivers(krx_data=None):
 
     if api_key and top_news:
         news_context = "\n".join([f"- [{n['press']}] {n['title']}: {n['summary'][:120]}" for n in top_news])
+        kospi = (krx_data or {}).get('kospi', {})
+        kosdaq = (krx_data or {}).get('kosdaq', {})
+        inv_kp = (krx_data or {}).get('investors_kospi', {})
+        kp_p = kospi.get('price', 0.0)
+        kp_r = kospi.get('ratio', 0.0)
+        kd_p = kosdaq.get('price', 0.0)
+        kd_r = kosdaq.get('ratio', 0.0)
+        kp_for = inv_kp.get('foreign', 0.0)
+
+        market_mode_str = (
+            "현재 한국 증시는 정규장 진행 중(실시간 장중)입니다. "
+            "반드시 현재 진행형 시제(~하고 있습니다, ~나타내고 있습니다, ~공방을 벌이고 있습니다 등)로 서술해 주시고, "
+            "마감형(~마감했습니다, ~장을 마쳤습니다 등) 시제를 사용하지 마세요."
+            if is_live else
+            "현재 한국 증시는 정규장 마감 상태입니다. 마감형 시제(~마감했습니다, ~작용했습니다, ~마쳤습니다 등)로 서술해 주세요."
+        )
+
         prompt = f"""
 당신은 국내 최고 금융기관의 수석 시장 전략가입니다.
-아래는 오늘({today_date}) 네이버 증권에서 수집된 핵심 시황 뉴스 3편의 정보입니다.
+{market_mode_str}
+[시장 데이터]: 코스피 {kp_p:,.2f}pt({kp_r:+.2f}%), 코스닥 {kd_p:,.2f}pt({kd_r:+.2f}%), 외국인 순매매 {kp_for:+,.0f}억원, 기준일자: {today_date}
 
+아래는 오늘 네이버 증권에서 수집된 핵심 시황 뉴스 3편의 정보입니다:
 {news_context}
 
-오늘 한국 증시(코스피/코스닥)의 상승 또는 하락, 보합을 이끈 '핵심적인 동적 요인(Market Drivers)'을 인과관계 중심으로 3~4문장의 유려한 한국어로 브리핑해 주세요.
+위 기사들의 구체적 팩트(국제유가, 국채금리, 고용지표, 대형주/반도체 동향 등)와 시장 데이터를 종합하여, 오늘 한국 증시(코스피/코스닥)의 상승 또는 하락, 보합을 이끈 '핵심적인 동적 요인(Market Drivers)'을 인과관계 중심으로 3~4문장의 유려한 한국어로 브리핑해 주세요.
 반드시 아래 형식에 맞추어 작성해 주세요:
 1. (첫 번째 핵심 동인 문장)
 2. (두 번째 핵심 동인 문장)
@@ -431,7 +566,7 @@ def get_krx_market_drivers(krx_data=None):
                 }
 
     # Fallback to smart NLP engine
-    nlp_res = generate_krx_drivers_nlp(top_news, krx_data)
+    nlp_res = generate_krx_drivers_nlp(top_news, krx_data, is_live=is_live)
     return {
         'sentences': nlp_res['sentences'],
         'tags': nlp_res['tags'],
@@ -440,7 +575,7 @@ def get_krx_market_drivers(krx_data=None):
     }
 
 
-def get_us_market_drivers(us_data=None):
+def get_us_market_drivers(us_data=None, is_live=False):
     """
     미국 증시(US) 오늘의 시장을 움직인 핵심 동인 브리핑 & 대표 뉴스 3선
     """
@@ -456,13 +591,20 @@ def get_us_market_drivers(us_data=None):
         macro = (us_data or {}).get('macro', {})
         tnx_rate = macro.get('^TNX', {}).get('price', 0.0)
 
+        market_mode_str = (
+            "현재 미국 증시는 정규장 진행 중(실시간)입니다. 반드시 현재 진행형 시제(~하고 있습니다, ~이어지고 있습니다 등)로 서술해 주세요."
+            if is_live else
+            "현재 미국 증시는 정규장 마감 상태입니다. 마감형 시제(~마감했습니다, ~장을 마쳤습니다 등)로 서술해 주세요."
+        )
+
         prompt = f"""
 당신은 월가 수석 시황 애널리스트입니다.
+{market_mode_str}
 아래는 오늘({today_date}) Yahoo Finance에서 수집된 뉴욕 증시 핵심 기사 3편의 헤드라인과 시장 데이터입니다.
 - S&P 500: {sp_ratio:+.2f}%, 나스닥: {nasdaq_ratio:+.2f}%, 미 10년물 국채금리: {tnx_rate:.2f}%
 {news_context}
 
-오늘 미국 증시의 흐름(상승/하락/혼조)을 이끈 '핵심적인 동적 요인(Market Drivers)'을 인과관계 중심으로 3~4문장의 전문적인 한국어로 브리핑해 주세요.
+오늘 미국 증시의 흐름(상승/하락/혼조)을 이끈 '핵심적인 동적 요인(Market Drivers)'을 위 기사들의 구체적인 사실을 반영하여 인과관계 중심으로 3~4문장의 전문적인 한국어로 브리핑해 주세요.
 반드시 아래 형식에 맞추어 작성해 주세요:
 1. (첫 번째 핵심 동인 문장)
 2. (두 번째 핵심 동인 문장)
@@ -482,7 +624,7 @@ def get_us_market_drivers(us_data=None):
                 }
 
     # Fallback to smart NLP engine
-    nlp_res = generate_us_drivers_nlp(top_news, us_data)
+    nlp_res = generate_us_drivers_nlp(top_news, us_data, is_live=is_live)
     return {
         'sentences': nlp_res['sentences'],
         'tags': nlp_res['tags'],

@@ -59,7 +59,7 @@ def load_us():
 @st.cache_data(ttl=180) # 뉴스 수집 및 브리핑 캐시 (3분 단위 갱신, 날짜/장상태/토큰별 캐시 키 분리)
 def load_krx_drivers(target_date: str, is_live: bool, _krx_data, reload_token: int = 0):
     try:
-        return news_loader.get_krx_market_drivers(_krx_data)
+        return news_loader.get_krx_market_drivers(_krx_data, is_live=is_live)
     except Exception as e:
         print(f"Error loading KRX drivers: {e}")
         return {'sentences': [], 'tags': [], 'articles': []}
@@ -67,7 +67,7 @@ def load_krx_drivers(target_date: str, is_live: bool, _krx_data, reload_token: i
 @st.cache_data(ttl=180)
 def load_us_drivers(target_date: str, is_live: bool, _us_data, reload_token: int = 0):
     try:
-        return news_loader.get_us_market_drivers(_us_data)
+        return news_loader.get_us_market_drivers(_us_data, is_live=is_live)
     except Exception as e:
         print(f"Error loading US drivers: {e}")
         return {'sentences': [], 'tags': [], 'articles': []}
