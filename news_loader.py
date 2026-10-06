@@ -231,6 +231,7 @@ def generate_krx_drivers_nlp(news_list, krx_data=None, is_live=False):
     kospi = (krx_data or {}).get('kospi', {})
     kosdaq = (krx_data or {}).get('kosdaq', {})
     inv = (krx_data or {}).get('investors_kospi', {})
+    inv_prev = (krx_data or {}).get('investors_kospi_prev', {})
 
     kp_p = kospi.get('price', 0.0)
     kp_r = kospi.get('ratio', 0.0)
@@ -239,6 +240,12 @@ def generate_krx_drivers_nlp(news_list, krx_data=None, is_live=False):
 
     kp_for = inv.get('foreign', 0.0)
     kp_inst = inv.get('institutional', 0.0)
+
+    # 개장 전(PRE_MARKET), 휴장일 또는 당일 수급이 아직 0인 경우 직전 거래일 마감 확정치로 통일
+    if not is_live and (kp_for == 0.0 and kp_inst == 0.0) and inv_prev:
+        kp_for = inv_prev.get('foreign', 0.0)
+        kp_inst = inv_prev.get('institutional', 0.0)
+        inv = inv_prev
 
     if not news_list:
         action_verb = "보이고 있습니다" if is_live else "마감했습니다"
@@ -519,34 +526,51 @@ def get_krx_market_drivers(krx_data=None, is_live=False):
     api_key = get_gemini_api_key()
     today_date = (krx_data or {}).get('date', '')
 
+    kospi = (krx_data or {}).get('kospi', {})
+    kosdaq = (krx_data or {}).get('kosdaq', {})
+    inv_kp = (krx_data or {}).get('investors_kospi', {})
+    inv_prev = (krx_data or {}).get('investors_kospi_prev', {})
+    kp_p = kospi.get('price', 0.0)
+    kp_r = kospi.get('ratio', 0.0)
+    kd_p = kosdaq.get('price', 0.0)
+    kd_r = kosdaq.get('ratio', 0.0)
+    kp_for = inv_kp.get('foreign', 0.0)
+    kp_inst = inv_kp.get('institutional', 0.0)
+
+    effective_date = today_date
+    if not is_live:
+        if kospi.get('date'):
+            effective_date = kospi.get('date')
+        elif inv_prev.get('date'):
+            effective_date = f"20{inv_prev.get('date')}" if len(inv_prev.get('date', '')) == 8 else inv_prev.get('date')
+
+        # 개장 전(PRE_MARKET), 휴장일 또는 당일 수급이 아직 집계되지 않은 경우 직전 마감 확정치로 통일
+        if (kp_for == 0.0 and kp_inst == 0.0) and inv_prev:
+            kp_for = inv_prev.get('foreign', 0.0)
+            kp_inst = inv_prev.get('institutional', 0.0)
+            inv_kp = inv_prev
+
     if api_key and top_news:
         news_context = "\n".join([f"- [{n['press']}] {n['title']}: {n['summary'][:120]}" for n in top_news])
-        kospi = (krx_data or {}).get('kospi', {})
-        kosdaq = (krx_data or {}).get('kosdaq', {})
-        inv_kp = (krx_data or {}).get('investors_kospi', {})
-        kp_p = kospi.get('price', 0.0)
-        kp_r = kospi.get('ratio', 0.0)
-        kd_p = kosdaq.get('price', 0.0)
-        kd_r = kosdaq.get('ratio', 0.0)
-        kp_for = inv_kp.get('foreign', 0.0)
 
         market_mode_str = (
             "현재 한국 증시는 정규장 진행 중(실시간 장중)입니다. "
             "반드시 현재 진행형 시제(~하고 있습니다, ~나타내고 있습니다, ~공방을 벌이고 있습니다 등)로 서술해 주시고, "
             "마감형(~마감했습니다, ~장을 마쳤습니다 등) 시제를 사용하지 마세요."
             if is_live else
-            "현재 한국 증시는 정규장 마감 상태입니다. 마감형 시제(~마감했습니다, ~작용했습니다, ~마쳤습니다 등)로 서술해 주세요."
+            f"현재 한국 증시는 정규장 개장 전 또는 마감 상태입니다. 직전 거래일({effective_date}) 마감 기준의 확정 데이터이므로 반드시 마감형 시제(~마감했습니다, ~작용했습니다, ~마쳤습니다 등)로 서술해 주세요."
         )
 
         prompt = f"""
 당신은 국내 최고 금융기관의 수석 시장 전략가입니다.
 {market_mode_str}
-[시장 데이터]: 코스피 {kp_p:,.2f}pt({kp_r:+.2f}%), 코스닥 {kd_p:,.2f}pt({kd_r:+.2f}%), 외국인 순매매 {kp_for:+,.0f}억원, 기준일자: {today_date}
+[시장 데이터]: 코스피 {kp_p:,.2f}pt({kp_r:+.2f}%), 코스닥 {kd_p:,.2f}pt({kd_r:+.2f}%), 외국인 순매매 {kp_for:+,.0f}억원, 기준일자: {effective_date}
 
-아래는 오늘 네이버 증권에서 수집된 핵심 시황 뉴스 3편의 정보입니다:
+아래는 네이버 증권에서 수집된 핵심 시황 뉴스 3편의 정보입니다:
 {news_context}
 
-위 기사들의 구체적 팩트(국제유가, 국채금리, 고용지표, 대형주/반도체 동향 등)와 시장 데이터를 종합하여, 오늘 한국 증시(코스피/코스닥)의 상승 또는 하락, 보합을 이끈 '핵심적인 동적 요인(Market Drivers)'을 인과관계 중심으로 3~4문장의 유려한 한국어로 브리핑해 주세요.
+위 기사들의 구체적 팩트(국제유가, 국채금리, 고용지표, 대형주/반도체 동향 등)와 시장 데이터(코스피/코스닥 등락률 및 외국인 순매매 수치: {kp_for:+,.0f}억원)를 유기적으로 종합하여, {effective_date} 한국 증시의 흐름을 이끈 '핵심적인 동적 요인(Market Drivers)'을 인과관계 중심으로 3~4문장의 유려하고 전문적인 한국어로 브리핑해 주세요.
+(주의: 직전 거래일 기준 외국인 순매매는 {kp_for:+,.0f}억원이므로 결코 '0원'이나 '관망세'로 설명하지 말고 실제 수치인 {kp_for:+,.0f}억원의 매매 동향을 있는 그대로 반영해 주세요.)
 반드시 아래 형식에 맞추어 작성해 주세요:
 1. (첫 번째 핵심 동인 문장)
 2. (두 번째 핵심 동인 문장)

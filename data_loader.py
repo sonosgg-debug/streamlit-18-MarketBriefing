@@ -219,13 +219,15 @@ def get_market_status(market='KRX'):
                 'current_time_str': now_kst.strftime('%H:%M:%S KST')
             }
         elif cur_time < market_open:
+            latest_bday = get_latest_completed_trading_day()
+            latest_fmt = f"{latest_bday[:4]}-{latest_bday[4:6]}-{latest_bday[6:]}"
             return {
                 'status': 'PRE_MARKET',
-                'label': '⏳ 장 개장 전 (직전 거래일 종가 기준)',
+                'label': f'⏳ 장 개장 전 (직전 거래일 {latest_fmt} 종가 기준)',
                 'badge': '⏳ 개장 전',
                 'is_live': False,
-                'title_suffix': '개장 전 브리핑 (전일 마감 기준)',
-                'time_str': f"{now_kst.strftime('%Y-%m-%d')} (직전 정규장 마감)",
+                'title_suffix': f'개장 전 브리핑 ({latest_fmt} 마감 기준)',
+                'time_str': f"{latest_fmt} (직전 정규장 마감)",
                 'closing_word': '마감',
                 'current_time_str': now_kst.strftime('%H:%M:%S KST')
             }
@@ -787,9 +789,14 @@ def get_krx_summary():
     today_str = get_now_kst().strftime('%Y%m%d')
     today_iso = get_now_kst().strftime('%Y-%m-%d')
 
+    trading_date = today_iso
+    if cur_m_status.get('status') in ['PRE_MARKET', 'WEEKEND', 'HOLIDAY']:
+        latest_bday = get_latest_completed_trading_day()
+        trading_date = f"{latest_bday[:4]}-{latest_bday[4:6]}-{latest_bday[6:]}"
+
     result = {
         'market': 'KRX',
-        'date': get_now_kst().strftime('%Y-%m-%d'),
+        'date': trading_date,
         'kospi': {},
         'kosdaq': {},
         'exchange_rate': {},
@@ -859,9 +866,17 @@ def get_us_summary():
     """
     미국 시장(US) 마감 종합 데이터 반환
     """
+    cur_m_status = get_market_status('US')
+    now_ny = get_now_ny()
+    today_ny_iso = now_ny.strftime('%Y-%m-%d')
+    trading_date = today_ny_iso
+    if cur_m_status.get('status') in ['PRE_MARKET', 'WEEKEND', 'HOLIDAY']:
+        latest_bday = get_latest_completed_us_trading_day()
+        trading_date = f"{latest_bday[:4]}-{latest_bday[4:6]}-{latest_bday[6:]}"
+
     result = {
         'market': 'US',
-        'date': get_now_ny().strftime('%Y-%m-%d'),
+        'date': trading_date,
         'indices': {},
         'macro': {},
         'm7_stocks': [],
