@@ -4,45 +4,57 @@ app.py
 (실시간 장중 vs 정규장 마감 상태 자동 감지 및 고대비 다크 테마)
 """
 
+import sys
+# Python 3.12+ 및 Streamlit Cloud 환경에서 pkg_resources 의존성 결함 방어용 Mock Shim
+try:
+    import pkg_resources
+except Exception:
+    try:
+        import setuptools.command
+        import pkg_resources
+    except Exception:
+        import types
+        pkg_mock = types.ModuleType("pkg_resources")
+        pkg_mock.resource_filename = lambda *args, **kwargs: ""
+        pkg_mock.resource_string = lambda *args, **kwargs: b""
+        pkg_mock.Requirement = type("Requirement", (), {"parse": lambda s: s})
+        pkg_mock.get_distribution = lambda *args, **kwargs: type("Dist", (), {"version": "1.0.0"})()
+        sys.modules["pkg_resources"] = pkg_mock
 
 import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
-from datetime import datetime
-import importlib
 
-import data_loader
-import summary_engine
-import calendar_data
-import news_loader
-from styles import CUSTOM_CSS
-
-STANDARD_CHART_THEME = {
-    'paper_bgcolor': '#1E293B',    # Tailwind Slate-800 (외곽 카드 배경)
-    'plot_bgcolor': '#0F172A',     # Tailwind Slate-900 (내부 딥 블랙 플롯)
-    'text_main': '#F8FAFC',        # 타이틀/헤더 텍스트 (순백색)
-    'text_body': '#E2E8F0',        # 본문 및 축 라벨 (부드러운 화이트)
-    'text_muted': '#CBD5E1',       # 축 눈금 수치 텍스트 (Slate-300)
-    'grid_color': '#334155',       # 그리드 격자선 (Slate-700)
-    'border_color': '#475569',     # 축 기준선 (Slate-600)
-    'legend_bg': 'rgba(30, 41, 59, 0.85)',
-    'legend_border': '#334155',
-    'hover_bg': 'rgba(15, 23, 42, 0.9)',
-    'hover_border': '#334155'
-}
-def escape_markdown(text: str) -> str:
-    """Streamlit st.markdown()에서 $ 기호가 KaTeX 수학 공식(LaTeX)으로 파싱되는 것을 방지합니다."""
-    if not text:
-        return text
-    return text.replace('$', r'\$')
-
-
-# 1. 페이지 설정
+# 1. 페이지 설정 (Streamlit 명령 최우선 실행 보장)
 st.set_page_config(
     page_title="글로벌 증시 브리핑 | 한국 & 미국",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+import pandas as pd
+import plotly.graph_objects as go
+from datetime import datetime
+import importlib
+
+# [가이드 05] 보조 모듈 최신 갱신 보장 및 에러 격리
+try:
+    import data_loader
+    importlib.reload(data_loader)
+
+    import summary_engine
+    importlib.reload(summary_engine)
+
+    import calendar_data
+    importlib.reload(calendar_data)
+
+    import news_loader
+    importlib.reload(news_loader)
+except Exception as e:
+    import traceback
+    st.error(f"모듈 로드 중 오류가 발생했습니다: {e}")
+    st.code(traceback.format_exc())
+    st.stop()
+
+from styles import CUSTOM_CSS
 
 # 커스텀 CSS 적용 (다크 테마 고대비 폰트/배경)
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
