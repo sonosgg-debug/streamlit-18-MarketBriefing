@@ -59,6 +59,26 @@ from styles import CUSTOM_CSS
 # 커스텀 CSS 적용 (다크 테마 고대비 폰트/배경)
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
+STANDARD_CHART_THEME = {
+    'paper_bgcolor': '#1E293B',    # Tailwind Slate-800 (외곽 카드 배경)
+    'plot_bgcolor': '#0F172A',     # Tailwind Slate-900 (내부 딥 블랙 플롯)
+    'text_main': '#F8FAFC',        # 타이틀/헤더 텍스트 (순백색)
+    'text_body': '#E2E8F0',        # 본문 및 축 라벨 (부드러운 화이트)
+    'text_muted': '#CBD5E1',       # 축 눈금 수치 텍스트 (Slate-300)
+    'grid_color': '#334155',       # 그리드 격자선 (Slate-700)
+    'border_color': '#475569',     # 축 기준선 (Slate-600)
+    'legend_bg': 'rgba(30, 41, 59, 0.85)',
+    'legend_border': '#334155',
+    'hover_bg': 'rgba(15, 23, 42, 0.9)',
+    'hover_border': '#334155'
+}
+
+def escape_markdown(text: str) -> str:
+    """Streamlit st.markdown()에서 $ 기호가 KaTeX 수학 공식(LaTeX)으로 파싱되는 것을 방지합니다."""
+    if not text:
+        return text
+    return str(text).replace('$', r'\$')
+
 # 2. 캐시 데이터 로더
 @st.cache_data(ttl=60) # 실시간 장중 갱신을 위해 캐시 TTL을 60초로 최적화
 def load_krx():
