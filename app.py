@@ -133,9 +133,23 @@ def render_market_drivers_section(drivers: dict, source_name: str, target_date: 
     ])
 
     articles_html = ""
-    if articles:
+    target_articles = articles
+    if not target_articles:
+        if "Yahoo" in source_name or "미국" in source_name:
+            target_articles = getattr(news_loader, 'DEFAULT_US_ARTICLES', [])
+        else:
+            target_articles = [
+                {
+                    'title': '네이버 증권 국내증시 시황·전망 뉴스 홈',
+                    'press': '네이버 증권',
+                    'time': '실시간 시황',
+                    'link': 'https://finance.naver.com/news/mainnews.naver'
+                }
+            ]
+
+    if target_articles:
         article_items = []
-        for a in articles:
+        for a in target_articles:
             time_part = f"<span class='driver-article-time'>({a.get('time')})</span> " if a.get('time') else ""
             press_part = f"<span class='driver-article-press'>[{a.get('press', source_name)}]</span>"
             t_escaped = escape_markdown(a.get('title', ''))

@@ -138,12 +138,49 @@ def fetch_krx_top_news(count=3):
     return scored_news[:count]
 
 
+# 야후 파이낸스 일시적 통신 장애 시 제공할 공식 안전 마켓 링크 3선
+DEFAULT_US_ARTICLES = [
+    {
+        'title': "Stock Market News Today: Latest Wall Street Market Wrap & Live Updates",
+        'summary': '미국 증시 주요 지수 및 시장 핵심 동향 실시간 종합 랩',
+        'press': "Yahoo Finance",
+        'time': "Live Market Wrap",
+        'pub_time': 0,
+        'score': 10,
+        'link': "https://finance.yahoo.com/topic/stock-market-news/",
+        'source': "Yahoo Finance"
+    },
+    {
+        'title': "S&P 500 (^GSPC) Real-time Index News, Drivers & Quotes",
+        'summary': 'S&P 500 지수 실시간 헤드라인 및 주요 시장 드라이버 뉴스',
+        'press': "Yahoo Finance",
+        'time': "Live S&P 500",
+        'pub_time': 0,
+        'score': 9,
+        'link': "https://finance.yahoo.com/quote/%5EGSPC/news/",
+        'source': "Yahoo Finance"
+    },
+    {
+        'title': "Nasdaq Composite (^IXIC) Latest Tech Megacap & Sector News",
+        'summary': '나스닥 종합 지수 및 빅테크 메가캡 주도주 실시간 뉴스',
+        'press': "Yahoo Finance",
+        'time': "Live Nasdaq",
+        'pub_time': 0,
+        'score': 8,
+        'link': "https://finance.yahoo.com/quote/%5EIXIC/news/",
+        'source': "Yahoo Finance"
+    }
+]
+
+
 def fetch_us_top_news(count=3):
     """
-    Yahoo Finance에서 미국 증시 당일 장중/마감 대표 기사 선별
-    - 최신 36시간 이내 기사 대상 (장마감 및 당일 정규장 시황 집중)
-    - providerPublishTime 기준 최신순 정렬
-    - 뉴욕 현지 시각(ET) 포맷 제공
+    Yahoo Finance에서 미국 증시 당일 장중/마감 대표 기사 선별 (다중 안전망 적용)
+    - 1차: yf.Search ('stock market today', 'S&P 500')
+    - 2차: yf.Ticker ('^GSPC', 'SPY') Ticker.news 피드
+    - 3차: Yahoo Finance 공식 RSS 피드 (requests)
+    - 4차: 네이버 증권의 뉴욕증시 특파원 마감 기사
+    - 5차 안전망: Yahoo Finance 공식 마켓 랩 & S&P500 실시간 직링크
     """
     try:
         from zoneinfo import ZoneInfo
@@ -153,23 +190,99 @@ def fetch_us_top_news(count=3):
         ny_tz = timezone(timedelta(hours=-4))
 
     now_ts = datetime.now().timestamp()
-    cutoff_ts = now_ts - 36 * 3600
+    cutoff_ts = now_ts - 48 * 3600  # 48시간으로 완화하여 주말/휴일 직후 마감 기사 누락 방지
 
     raw_items = []
+
+    # 1차: yf.Search ('stock market today')
     try:
-        s = yf.Search('stock market today', news_count=20, timeout=5)
+        s = yf.Search('stock market today', news_count=20, timeout=10)
         if s.news:
             raw_items.extend(s.news)
     except Exception as e:
         print(f"Yahoo Search (stock market today) failed: {e}")
 
-    if len(raw_items) < 3:
+    # 1-1차: yf.Search ('S&P 500')
+    if len(raw_items) < 5:
         try:
-            s2 = yf.Search('S&P 500', news_count=10, timeout=5)
+            s2 = yf.Search('S&P 500', news_count=10, timeout=8)
             if s2.news:
                 raw_items.extend(s2.news)
         except Exception as e:
             print(f"Yahoo Search (S&P 500) failed: {e}")
+
+    # 2차: yf.Ticker ('^GSPC', 'SPY') 지수 연동 뉴스
+    if len(raw_items) < 5:
+        for sym in ['^GSPC', 'SPY']:
+            try:
+                t_obj = yf.Ticker(sym)
+                t_news = t_obj.news
+                if t_news:
+                    for tn in t_news:
+                        if 'content' in tn:
+                            c = tn['content']
+                            title = c.get('title', '')
+                            link = c.get('canonicalUrl', {}).get('url') or c.get('clickThroughUrl', {}).get('url', '')
+                            pub = c.get('provider', {}).get('displayName', 'Yahoo Finance')
+                            raw_items.append({
+                                'title': title,
+                                'link': link,
+                                'publisher': pub,
+                                'providerPublishTime': None
+                            })
+                        else:
+                            title = tn.get('title', '')
+                            link = tn.get('link', '')
+                            pub = tn.get('publisher', 'Yahoo Finance')
+                            pub_time = tn.get('providerPublishTime')
+                            raw_items.append({
+                                'title': title,
+                                'link': link,
+                                'publisher': pub,
+                                'providerPublishTime': pub_time
+                            })
+            except Exception as e:
+                print(f"Ticker ({sym}) news failed: {e}")
+
+    # 3차: Yahoo Finance 공식 RSS 피드 (requests)
+    if len(raw_items) < 3:
+        try:
+            import xml.etree.ElementTree as ET
+            r_rss = requests.get('https://finance.yahoo.com/news/rssindex', headers=HEADERS, timeout=6)
+            if r_rss.status_code == 200:
+                root = ET.fromstring(r_rss.content)
+                for it_rss in root.findall('./channel/item')[:20]:
+                    t_rss = it_rss.find('title')
+                    l_rss = it_rss.find('link')
+                    if t_rss is not None and l_rss is not None and t_rss.text and l_rss.text:
+                        raw_items.append({
+                            'title': t_rss.text.strip(),
+                            'link': l_rss.text.strip(),
+                            'publisher': 'Yahoo Finance',
+                            'providerPublishTime': None
+                        })
+        except Exception as e:
+            print(f"Yahoo RSS fetch failed: {e}")
+
+    # 4차: 네이버 증권의 해외/뉴욕증시 특파원 마감 기사 백업
+    if len(raw_items) < 3:
+        try:
+            r_nv = requests.get('https://m.stock.naver.com/api/news/list?category=mainnews&pageSize=40', headers=HEADERS, timeout=4)
+            if r_nv.status_code == 200:
+                for it_nv in r_nv.json():
+                    tit = it_nv.get('tit', '')
+                    oid = it_nv.get('oid', '')
+                    aid = it_nv.get('aid', '')
+                    ohnm = it_nv.get('ohnm', '네이버 증권')
+                    if any(k in tit for k in ['뉴욕증시', '미국 증시', '월가', '다우', '나스닥', 'S&P', '美 증시', '美증시']):
+                        raw_items.append({
+                            'title': tit,
+                            'link': f"https://n.news.naver.com/mnews/article/{oid}/{aid}",
+                            'publisher': f"{ohnm} (뉴욕 특파원)",
+                            'providerPublishTime': None
+                        })
+        except Exception as e:
+            print(f"Naver US market news fallback failed: {e}")
 
     seen_titles = set()
     articles = []
@@ -177,7 +290,8 @@ def fetch_us_top_news(count=3):
     market_keywords = [
         'stock market today', 'stocks', 'dow', 's&p', 'nasdaq', 'wall street',
         'treasury', 'yields', 'rebound', 'comeback', 'indexes fared', 'close',
-        'fed', 'inflation', 'quarter', 'rally', 'equities', 'chips', 'tech'
+        'fed', 'inflation', 'quarter', 'rally', 'equities', 'chips', 'tech',
+        '뉴욕증시', '미국 증시', '월가', '다우', '나스닥', '국채금리'
     ]
 
     for it in raw_items:
@@ -189,10 +303,6 @@ def fetch_us_top_news(count=3):
         if not title or not link or title in seen_titles:
             continue
         seen_titles.add(title)
-
-        # 36시간 이전 구형 기사 제외
-        if pub_time and pub_time < cutoff_ts:
-            continue
 
         t_lower = title.lower()
         score = sum(1 for kw in market_keywords if kw in t_lower)
@@ -213,12 +323,26 @@ def fetch_us_top_news(count=3):
             'pub_time': pub_time or 0,
             'score': score,
             'link': link,
-            'source': 'Yahoo Finance'
+            'source': 'Yahoo Finance' if 'Yahoo' in pub else '글로벌 마켓'
         })
 
+    # 최신성 기준 1차 필터링 (단, 필터링 후 3개 이상일 때만 엄격 적용)
+    fresh_articles = [a for a in articles if a['pub_time'] == 0 or a['pub_time'] >= cutoff_ts]
+    target_articles = fresh_articles if len(fresh_articles) >= count else articles
+
     # 최신성(발행시각)과 시황 적합도(스코어) 기준 우선 정렬
-    articles.sort(key=lambda x: (x['score'] >= 1, x['pub_time']), reverse=True)
-    return articles[:count]
+    target_articles.sort(key=lambda x: (x['score'] >= 1, x['pub_time']), reverse=True)
+    selected = target_articles[:count]
+
+    # 최종 안전망: 만약 여전히 3개 미만인 경우 기본 안전 마켓 링크로 채움 (절대 빈 상자가 되지 않음)
+    if len(selected) < count:
+        for default_item in DEFAULT_US_ARTICLES:
+            if not any(a['title'] == default_item['title'] for a in selected):
+                selected.append(default_item)
+            if len(selected) >= count:
+                break
+
+    return selected[:count]
 
 
 def generate_krx_drivers_nlp(news_list, krx_data=None, is_live=False):
