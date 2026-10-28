@@ -296,24 +296,26 @@ def get_market_status(market='KRX'):
         elif cur_time < market_open:
             latest_bday = get_latest_completed_us_trading_day()
             latest_fmt = f"{latest_bday[:4]}-{latest_bday[4:6]}-{latest_bday[6:]}"
+            now_kst = get_now_kst()
             return {
                 'status': 'PRE_MARKET',
-                'label': '⏳ 뉴욕 장 개장 전 (직전 마감 기준)',
+                'label': f'⏳ 뉴욕 장 개장 전 (직전 마감 {latest_fmt} 기준)',
                 'badge': '⏳ 개장 전',
                 'is_live': False,
-                'title_suffix': '개장 전 브리핑 (전일 마감 기준)',
-                'time_str': f"{latest_fmt} ET (직전 정규장 마감)",
+                'title_suffix': f'개장 전 브리핑 ({latest_fmt} 마감 기준)',
+                'time_str': f"{latest_fmt} ET (직전 뉴욕 정규장 마감)",
                 'closing_word': '마감',
                 'current_time_str': now_ny.strftime('%H:%M:%S ET')
             }
         else:
+            now_kst = get_now_kst()
             return {
                 'status': 'CLOSED',
-                'label': '🏁 당일 뉴욕 정규장 마감 완료',
+                'label': f'🏁 뉴욕 정규장 마감 (한국 {now_kst.strftime("%m.%d")} 새벽 마감 완료)',
                 'badge': '✅ 정규장 마감',
                 'is_live': False,
                 'title_suffix': '마감 종합 브리핑',
-                'time_str': f"{now_ny.strftime('%Y-%m-%d')} ET (정규장 마감)",
+                'time_str': f"{now_ny.strftime('%Y-%m-%d')} ET (한국 {now_kst.strftime('%m.%d')} 새벽 정규장 마감)",
                 'closing_word': '마감',
                 'current_time_str': now_ny.strftime('%H:%M:%S ET')
             }

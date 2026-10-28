@@ -36,7 +36,7 @@ def get_gemini_api_key():
 
 def call_gemini_generate(prompt: str, api_key: str):
     """Google Gemini REST API 호출 (최신 사용 가능 모델 순차 시도 및 즉시 응답 최적화)"""
-    models_to_try = ["gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-3.8-flash"]
+    models_to_try = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.0-flash"]
     payload = {
         "contents": [{
             "parts": [{"text": prompt}]
@@ -173,46 +173,129 @@ DEFAULT_US_ARTICLES = [
 ]
 
 
+def parse_date_to_timestamp(date_val):
+    """다양한 날짜 포맷(RFC 2822, ISO 8601, KST 문자열, 유닉스 타임스탬프)을 통일된 초 단위 타임스탬프로 변환"""
+    if not date_val:
+        return 0
+    if isinstance(date_val, (int, float)):
+        return float(date_val)
+    if not isinstance(date_val, str):
+        return 0
+    date_str = date_val.strip()
+    try:
+        from email.utils import parsedate_to_datetime
+        return parsedate_to_datetime(date_str).timestamp()
+    except Exception:
+        pass
+    try:
+        return datetime.fromisoformat(date_str.replace('Z', '+00:00')).timestamp()
+    except Exception:
+        pass
+    if len(date_str) >= 14 and date_str[:14].isdigit():
+        try:
+            from zoneinfo import ZoneInfo
+            kst_tz = ZoneInfo('Asia/Seoul')
+        except Exception:
+            from datetime import timezone, timedelta
+            kst_tz = timezone(timedelta(hours=9))
+        try:
+            dt_kst = datetime.strptime(date_str[:14], "%Y%m%d%H%M%S").replace(tzinfo=kst_tz)
+            return dt_kst.timestamp()
+        except Exception:
+            pass
+    return 0
+
+
 def fetch_us_top_news(count=3):
     """
-    Yahoo Finance에서 미국 증시 당일 장중/마감 대표 기사 선별 (다중 안전망 적용)
-    - 1차: yf.Search ('stock market today', 'S&P 500')
-    - 2차: yf.Ticker ('^GSPC', 'SPY') Ticker.news 피드
-    - 3차: Yahoo Finance 공식 RSS 피드 (requests)
-    - 4차: 네이버 증권의 뉴욕증시 특파원 마감 기사
-    - 5차 안전망: Yahoo Finance 공식 마켓 랩 & S&P500 실시간 직링크
+    미국 증시 실시간/마감 대표 뉴스 선별 (초고신뢰 다중 실시간 소스 + 듀얼 타임스탬프)
+    - 1차: Yahoo Finance 공식 실시간 RSS (S&P 500, SPY) 및 CNBC 마켓 뉴스
+    - 2차: 네이버 증권 뉴욕 특파원 실시간 마감 기사 (한국시간 아침 마감 종합)
+    - 3차: yfinance Search ('stock market today') 최신 검색
+    - 4차: yfinance Ticker (^GSPC, SPY) 뉴스
+    - 5차: Yahoo Finance 공식 마켓 랩 & S&P500 실시간 안전 직링크 (DEFAULT_US_ARTICLES)
     """
     try:
         from zoneinfo import ZoneInfo
         ny_tz = ZoneInfo('America/New_York')
+        kst_tz = ZoneInfo('Asia/Seoul')
     except Exception:
         from datetime import timezone, timedelta
         ny_tz = timezone(timedelta(hours=-4))
+        kst_tz = timezone(timedelta(hours=9))
 
     now_ts = datetime.now().timestamp()
-    cutoff_ts = now_ts - 48 * 3600  # 48시간으로 완화하여 주말/휴일 직후 마감 기사 누락 방지
+    raw_articles = []
 
-    raw_items = []
-
-    # 1차: yf.Search ('stock market today')
-    try:
-        s = yf.Search('stock market today', news_count=20, timeout=10)
-        if s.news:
-            raw_items.extend(s.news)
-    except Exception as e:
-        print(f"Yahoo Search (stock market today) failed: {e}")
-
-    # 1-1차: yf.Search ('S&P 500')
-    if len(raw_items) < 5:
+    # 1. Yahoo Finance RSS & CNBC Real-time RSS 피드 (최신 타임스탬프 보장)
+    rss_feeds = [
+        ('Yahoo Finance (S&P 500)', 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC&region=US&lang=en-US'),
+        ('Yahoo Finance (SPY)', 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=SPY&region=US&lang=en-US'),
+        ('CNBC Markets', 'https://cnbc.com/id/100003114/device/rss/rss.html')
+    ]
+    import xml.etree.ElementTree as ET
+    for source_name, url in rss_feeds:
         try:
-            s2 = yf.Search('S&P 500', news_count=10, timeout=8)
-            if s2.news:
-                raw_items.extend(s2.news)
+            r = requests.get(url, headers=HEADERS, timeout=4)
+            if r.status_code == 200:
+                root = ET.fromstring(r.content)
+                for it in root.findall('./channel/item'):
+                    tit = it.find('title').text if it.find('title') is not None else ''
+                    lnk = it.find('link').text if it.find('link') is not None else ''
+                    pdate = it.find('pubDate').text if it.find('pubDate') is not None else ''
+                    pub_ts = parse_date_to_timestamp(pdate)
+                    if tit and lnk:
+                        raw_articles.append({
+                            'title': tit.strip(),
+                            'link': lnk.strip(),
+                            'publisher': source_name,
+                            'pub_time': pub_ts
+                        })
         except Exception as e:
-            print(f"Yahoo Search (S&P 500) failed: {e}")
+            print(f"RSS fetch ({source_name}) failed: {e}")
 
-    # 2차: yf.Ticker ('^GSPC', 'SPY') 지수 연동 뉴스
-    if len(raw_items) < 5:
+    # 2. 네이버 증권 뉴욕 특파원 실시간 마감 기사 (한국시간 아침 마감 직후 집중 보도)
+    try:
+        r_nv = requests.get('https://m.stock.naver.com/api/news/list?category=mainnews&pageSize=40', headers=HEADERS, timeout=4)
+        if r_nv.status_code == 200:
+            for it_nv in r_nv.json():
+                tit = it_nv.get('tit', '')
+                oid = it_nv.get('oid', '')
+                aid = it_nv.get('aid', '')
+                ohnm = it_nv.get('ohnm', '네이버 증권')
+                dt_str = it_nv.get('dt', '')
+                pub_ts = parse_date_to_timestamp(dt_str)
+                if any(k in tit for k in ['뉴욕증시', '미국 증시', '월가', '다우', '나스닥', 'S&P', '美 증시', '美증시', 'Fed', '연준']):
+                    raw_articles.append({
+                        'title': tit.strip(),
+                        'link': f"https://n.news.naver.com/mnews/article/{oid}/{aid}",
+                        'publisher': f"{ohnm} (뉴욕 특파원)",
+                        'pub_time': pub_ts
+                    })
+    except Exception as e:
+        print(f"Naver US market news failed: {e}")
+
+    # 3. Yahoo Search (yfinance)
+    try:
+        s = yf.Search('stock market today', news_count=15, timeout=6)
+        if s.news:
+            for sn in s.news:
+                tit = sn.get('title', '').strip()
+                lnk = sn.get('link', '').strip()
+                pub = sn.get('publisher', 'Yahoo Finance')
+                pt = sn.get('providerPublishTime') or 0
+                if tit and lnk:
+                    raw_articles.append({
+                        'title': tit,
+                        'link': lnk,
+                        'publisher': pub,
+                        'pub_time': pt
+                    })
+    except Exception as e:
+        print(f"Yahoo search failed: {e}")
+
+    # 4. yfinance Ticker news (^GSPC, SPY)
+    if len(raw_articles) < 10:
         for sym in ['^GSPC', 'SPY']:
             try:
                 t_obj = yf.Ticker(sym)
@@ -221,120 +304,93 @@ def fetch_us_top_news(count=3):
                     for tn in t_news:
                         if 'content' in tn:
                             c = tn['content']
-                            title = c.get('title', '')
-                            link = c.get('canonicalUrl', {}).get('url') or c.get('clickThroughUrl', {}).get('url', '')
+                            tit = c.get('title', '').strip()
+                            lnk = c.get('canonicalUrl', {}).get('url') or c.get('clickThroughUrl', {}).get('url', '').strip()
                             pub = c.get('provider', {}).get('displayName', 'Yahoo Finance')
-                            raw_items.append({
-                                'title': title,
-                                'link': link,
-                                'publisher': pub,
-                                'providerPublishTime': None
-                            })
-                        else:
-                            title = tn.get('title', '')
-                            link = tn.get('link', '')
-                            pub = tn.get('publisher', 'Yahoo Finance')
-                            pub_time = tn.get('providerPublishTime')
-                            raw_items.append({
-                                'title': title,
-                                'link': link,
-                                'publisher': pub,
-                                'providerPublishTime': pub_time
-                            })
+                            pt = parse_date_to_timestamp(c.get('pubDate'))
+                            if tit and lnk:
+                                raw_articles.append({
+                                    'title': tit,
+                                    'link': lnk,
+                                    'publisher': pub,
+                                    'pub_time': pt
+                                })
             except Exception as e:
                 print(f"Ticker ({sym}) news failed: {e}")
 
-    # 3차: Yahoo Finance 공식 RSS 피드 (requests)
-    if len(raw_items) < 3:
-        try:
-            import xml.etree.ElementTree as ET
-            r_rss = requests.get('https://finance.yahoo.com/news/rssindex', headers=HEADERS, timeout=6)
-            if r_rss.status_code == 200:
-                root = ET.fromstring(r_rss.content)
-                for it_rss in root.findall('./channel/item')[:20]:
-                    t_rss = it_rss.find('title')
-                    l_rss = it_rss.find('link')
-                    if t_rss is not None and l_rss is not None and t_rss.text and l_rss.text:
-                        raw_items.append({
-                            'title': t_rss.text.strip(),
-                            'link': l_rss.text.strip(),
-                            'publisher': 'Yahoo Finance',
-                            'providerPublishTime': None
-                        })
-        except Exception as e:
-            print(f"Yahoo RSS fetch failed: {e}")
-
-    # 4차: 네이버 증권의 해외/뉴욕증시 특파원 마감 기사 백업
-    if len(raw_items) < 3:
-        try:
-            r_nv = requests.get('https://m.stock.naver.com/api/news/list?category=mainnews&pageSize=40', headers=HEADERS, timeout=4)
-            if r_nv.status_code == 200:
-                for it_nv in r_nv.json():
-                    tit = it_nv.get('tit', '')
-                    oid = it_nv.get('oid', '')
-                    aid = it_nv.get('aid', '')
-                    ohnm = it_nv.get('ohnm', '네이버 증권')
-                    if any(k in tit for k in ['뉴욕증시', '미국 증시', '월가', '다우', '나스닥', 'S&P', '美 증시', '美증시']):
-                        raw_items.append({
-                            'title': tit,
-                            'link': f"https://n.news.naver.com/mnews/article/{oid}/{aid}",
-                            'publisher': f"{ohnm} (뉴욕 특파원)",
-                            'providerPublishTime': None
-                        })
-        except Exception as e:
-            print(f"Naver US market news fallback failed: {e}")
-
     seen_titles = set()
-    articles = []
+    processed = []
 
-    market_keywords = [
-        'stock market today', 'stocks', 'dow', 's&p', 'nasdaq', 'wall street',
-        'treasury', 'yields', 'rebound', 'comeback', 'indexes fared', 'close',
-        'fed', 'inflation', 'quarter', 'rally', 'equities', 'chips', 'tech',
-        '뉴욕증시', '미국 증시', '월가', '다우', '나스닥', '국채금리'
+    noise_words = [
+        '3 reasons to', '2 reasons to', 'reasons to sell', 'reasons to buy',
+        'what you should know', 'should you buy', 'is it curtains',
+        'who’s to blame', 'touchscreen laptop', 'home repairs', 'diners', 'best stocks to buy'
     ]
 
-    for it in raw_items:
-        title = it.get('title', '').strip()
-        link = it.get('link', '').strip()
-        pub_time = it.get('providerPublishTime')
-        pub = it.get('publisher', 'Yahoo Finance')
+    cutoff_24h = now_ts - 24 * 3600
+    cutoff_48h = now_ts - 48 * 3600
 
-        if not title or not link or title in seen_titles:
+    for a in raw_articles:
+        t = a['title']
+        l = a['link']
+        p = a['pub_time']
+        pub = a['publisher']
+        if not t or not l or t in seen_titles:
             continue
-        seen_titles.add(title)
+        seen_titles.add(t)
 
-        t_lower = title.lower()
-        score = sum(1 for kw in market_keywords if kw in t_lower)
+        t_lower = t.lower()
+        if any(nw in t_lower for nw in noise_words):
+            continue
 
+        score = 0
+        if any(k in t_lower for k in ['dow', 's&p', 'nasdaq', '뉴욕증시', 'wall street', 'fed', 'rate decision', '연준', '금리 동결']):
+            score += 6
+        if any(k in t_lower for k in ['market wrap', 'markets edge', 'rise', 'fall', 'close', '마감', '상승', '하락']):
+            score += 3
+        if any(k in t_lower for k in ['earnings', 'tech', 'big tech', '실적', '알파벳', '마이크로소프트', '구글', 'msft']):
+            score += 2
+
+        # 최신성 가산점 (직전 12시간 이내 발행 기사 최우선)
+        if p > 0:
+            age_hours = (now_ts - p) / 3600
+            if age_hours <= 12:
+                score += 8
+            elif age_hours <= 24:
+                score += 4
+            elif age_hours > 36:
+                score -= 6
+
+        # 미국 현지 시각(ET)과 한국 시각(KST)을 동시에 표기하여 사용자의 시차 혼선 방지
         time_str = ""
-        if pub_time:
+        if p > 0:
             try:
-                dt_ny = datetime.fromtimestamp(pub_time, ny_tz)
-                time_str = dt_ny.strftime('%m.%d %H:%M ET')
+                dt_ny = datetime.fromtimestamp(p, ny_tz)
+                dt_kr = datetime.fromtimestamp(p, kst_tz)
+                time_str = f"{dt_ny.strftime('%m.%d %H:%M ET')} (한국 {dt_kr.strftime('%H:%M')})"
             except Exception:
                 pass
 
-        articles.append({
-            'title': title,
+        processed.append({
+            'title': t,
             'summary': '',
             'press': pub,
             'time': time_str,
-            'pub_time': pub_time or 0,
+            'pub_time': p,
             'score': score,
-            'link': link,
+            'link': l,
             'source': 'Yahoo Finance' if 'Yahoo' in pub else '글로벌 마켓'
         })
 
-    # 최신성 기준 1차 필터링 (단, 필터링 후 3개 이상일 때만 엄격 적용)
-    fresh_articles = [a for a in articles if a['pub_time'] == 0 or a['pub_time'] >= cutoff_ts]
-    target_articles = fresh_articles if len(fresh_articles) >= count else articles
+    fresh_list = [a for a in processed if a['pub_time'] >= cutoff_24h]
+    target_list = fresh_list if len(fresh_list) >= count else [a for a in processed if a['pub_time'] >= cutoff_48h]
+    if len(target_list) < count:
+        target_list = processed
 
-    # 최신성(발행시각)과 시황 적합도(스코어) 기준 우선 정렬
-    target_articles.sort(key=lambda x: (x['score'] >= 1, x['pub_time']), reverse=True)
-    selected = target_articles[:count]
+    target_list.sort(key=lambda x: (x['score'], x['pub_time']), reverse=True)
+    selected = target_list[:count]
 
-    # 최종 안전망: 만약 여전히 3개 미만인 경우 기본 안전 마켓 링크로 채움 (절대 빈 상자가 되지 않음)
+    # 최종 안전망
     if len(selected) < count:
         for default_item in DEFAULT_US_ARTICLES:
             if not any(a['title'] == default_item['title'] for a in selected):
@@ -492,7 +548,7 @@ def generate_krx_drivers_nlp(news_list, krx_data=None, is_live=False):
 
 
 def generate_us_drivers_nlp(news_list, us_data=None, is_live=False):
-    """미국 시장 핵심 동인 3~4문장 지능형 추출 알고리즘 (Yahoo Finance 기사 및 시장 수치 기반)"""
+    """미국 시장 핵심 동인 3~4문장 지능형 추출 알고리즘 (수집된 최신 기사 및 시장 수치 기반 동적 합성)"""
     indices = (us_data or {}).get('indices', {})
     macro = (us_data or {}).get('macro', {})
 
@@ -510,11 +566,18 @@ def generate_us_drivers_nlp(news_list, us_data=None, is_live=False):
     sentences = []
     tags = []
 
-    # 1문장: 국채금리 및 거시 환경 요인
+    # 1문장: 연준 정책 & 국채금리 거시 환경 요인
+    has_fed = any(w in all_titles for w in ['fed', 'rate decision', 'pause', 'hold', '동결', '연준', '금리 동결'])
     has_yield_drop = any(w in all_titles for w in ['yields fall', 'recede', 'slump', 'drop', 'lower']) or tnx_chg < -0.01
     has_yield_rise = any(w in all_titles for w in ['rising treasury', 'yields climb', 'higher yields']) or tnx_chg > 0.03
 
-    if has_yield_drop:
+    if has_fed:
+        tags.append("#연준금리동결")
+        if is_live:
+            sentences.append(f"연준(Fed)의 기준금리 동결 결정에 따른 정책 불확실성 완화 속에 미 국채 10년물 금리가 {tnx_val:.2f}% 수준을 나타내며 투자심리를 지지하고 있습니다.")
+        else:
+            sentences.append(f"연준(Fed)의 기준금리 동결 결정에 따른 정책 불확실성 완화 속에 미 국채 10년물 금리가 {tnx_val:.2f}% 수준을 기록하며 증시 전반에 안도감을 제공했습니다.")
+    elif has_yield_drop:
         tags.append("#국채금리안정")
         if is_live:
             sentences.append(f"치솟던 미 국채 10년물 금리가 {tnx_val:.2f}% 선에서 하향 안정세를 나타내며, 기술주 및 지수 전반에 우호적인 투자 환경을 제공하고 있습니다.")
@@ -526,12 +589,6 @@ def generate_us_drivers_nlp(news_list, us_data=None, is_live=False):
             sentences.append(f"미 국채 10년물 금리가 {tnx_val:.2f}% 수준으로 상승 압력을 가하며 고밸류에이션 기술주 및 지수 상단에 부담 요인으로 작용하고 있습니다.")
         else:
             sentences.append(f"미 국채 10년물 금리가 {tnx_val:.2f}% 수준으로 상승 압력을 가하며 고밸류에이션 기술주 및 지수 상단에 부담 요인으로 작용했습니다.")
-    elif 'fed' in all_titles or 'inflation' in all_titles:
-        tags.append("#연준정책주시")
-        if is_live:
-            sentences.append("연준의 차기 금리 정책 경로와 주요 거시 경제 지표를 둘러싼 시장의 경계감이 지속되며 조심스러운 관망세가 형성되고 있습니다.")
-        else:
-            sentences.append("연준의 차기 금리 정책 경로와 주요 거시 경제 지표를 둘러싼 시장의 경계감이 지속되며 관망 심리가 형성되었습니다.")
     else:
         tags.append("#매크로관망")
         if is_live:
@@ -539,50 +596,57 @@ def generate_us_drivers_nlp(news_list, us_data=None, is_live=False):
         else:
             sentences.append(f"미 국채 10년물 금리가 {tnx_val:.2f}% 부근에서 안정적인 흐름을 유지하며 대외 매크로 변수를 소화하는 양상을 보였습니다.")
 
-    # 2문장: 기업 실적 및 반도체/빅테크 흐름
-    has_chip = any(w in all_titles for w in ['chip', 'semiconductor', 'micron', 'nvidia', 'sox'])
-    has_tech = any(w in all_titles for w in ['tech', 'nasdaq', 'apple', 'microsoft'])
+    # 2문장: 기업 실적 및 빅테크/반도체 흐름
+    has_bigtech_earnings = any(w in all_titles for w in ['microsoft', 'msft', 'alphabet', 'google', 'earnings', '실적', '메타', '애플', 'apple', 'servicenow', 'oracle'])
+    has_chip = any(w in all_titles for w in ['chip', 'semiconductor', '반도체', 'nvidia', '엔비디아', '하이닉스', 'sox'])
+    has_tech = any(w in all_titles for w in ['tech', 'nasdaq', '기술주', 'ai'])
 
-    if has_chip:
-        if any(w in all_titles for w in ['reverses', 'gain', 'comeback', 'rise']) or nasdaq_ratio >= 0:
-            tags.append("#반도체저가매수")
-            if is_live:
-                sentences.append("마이크론 등 주요 반도체 기업들의 반등과 함께 핵심 기술주를 중심으로 저가 매수세가 유입되며 나스닥 지수의 하방을 단단히 지지하고 있습니다.")
-            else:
-                sentences.append("마이크론 등 주요 반도체 기업들의 반등과 함께 핵심 기술주를 중심으로 저가 매수세가 유입되며 나스닥 지수의 하방을 단단히 지지했습니다.")
+    if has_bigtech_earnings:
+        tags.append("#빅테크실적발표")
+        if is_live:
+            sentences.append("주요 빅테크 및 클라우드 기업들의 실적 발표와 분기 가이던스에 따라 종목별 주가 희비가 엇갈리며 기술주 전반의 변동성을 키우고 있습니다.")
         else:
-            tags.append("#기술주변동성")
+            sentences.append("주요 빅테크 및 클라우드 기업들의 실적 발표와 분기 가이던스에 따라 종목별 주가 희비가 엇갈리며 기술주 전반의 뚜렷한 차별화 장세가 전개되었습니다.")
+    elif has_chip:
+        if any(w in all_titles for w in ['reverses', 'gain', 'comeback', 'rise', '상승', '호실적']) or nasdaq_ratio >= 0:
+            tags.append("#반도체랠리")
             if is_live:
-                sentences.append("반도체 및 하드웨어 섹터 내 차익 실현 매물이 출회되며 기술주 중심의 장중 변동성이 이어지고 있습니다.")
+                sentences.append("AI 인프라 수요 확대와 주요 반도체 기업들의 호실적 모멘텀에 힘입어 기술주 중심의 견조한 매수세가 지수 하방을 든든하게 지지하고 있습니다.")
             else:
-                sentences.append("반도체 및 하드웨어 섹터 내 차익 실현 매물이 출회되며 기술주 중심의 변동성이 이어졌습니다.")
+                sentences.append("AI 인프라 수요 확대와 주요 반도체 기업들의 호실적 모멘텀에 힘입어 기술주 중심의 견조한 매수세가 유입되며 지수 하방을 지지했습니다.")
+        else:
+            tags.append("#반도체차익실현")
+            if is_live:
+                sentences.append("반도체 및 AI 하드웨어 섹터 내 차익실현 매물이 출회되며 기술주 중심의 숨고르기 양상이 이어지고 있습니다.")
+            else:
+                sentences.append("반도체 및 AI 하드웨어 섹터 내 차익실현 매물이 출회되며 기술주 중심의 숨고르기 장세가 전개되었습니다.")
     elif has_tech or nasdaq_ratio > 0.3:
         tags.append("#빅테크반등")
         if is_live:
-            sentences.append("인공지능(AI) 및 대형 테크 기업들을 향한 투자 심리가 회복세를 보이며 지수 상승 전환의 견인차 역할을 하고 있습니다.")
+            sentences.append("인공지능(AI) 생태계 확장과 대형 테크 기업들을 향한 투자 심리가 회복세를 보이며 지수 상승 전환의 견인차 역할을 하고 있습니다.")
         else:
-            sentences.append("인공지능(AI) 및 대형 테크 기업들을 향한 투자 심리가 회복세를 보이며 지수 상승 전환의 견인차 역할을 했습니다.")
+            sentences.append("인공지능(AI) 생태계 확장과 대형 테크 기업들을 향한 투자 심리가 회복세를 보이며 지수 상승 전환의 견인차 역할을 했습니다.")
     else:
         tags.append("#대형주차별화")
         if is_live:
-            sentences.append("시가총액 상위 대형주 내에서 실적 전망과 밸류에이션 매력도에 따른 뚜렷한 업종별 차별화 장세가 전개되고 있습니다.")
+            sentences.append("시가총액 상위 대형주 내에서 실적 전망과 밸류에이션 매력도에 따른 뚜렷한 업종별 순환매 장세가 전개되고 있습니다.")
         else:
-            sentences.append("시가총액 상위 대형주 내에서 실적 전망과 밸류에이션 매력도에 따른 뚜렷한 업종별 차별화 장세가 전개되었습니다.")
+            sentences.append("시가총액 상위 대형주 내에서 실적 전망과 밸류에이션 매력도에 따른 뚜렷한 업종별 순환매 장세가 전개되었습니다.")
 
     # 3문장: 지수 종합 흐름 및 투자 심리
-    has_comeback = any(w in all_titles for w in ['comeback', 'rebound', 'slips', 'flat', 'rise']) or sp_ratio > 0
+    has_comeback = any(w in all_titles for w in ['comeback', 'rebound', 'slips', 'flat', 'rise', '상승']) or sp_ratio > 0
     if has_comeback and sp_ratio >= 0:
-        tags.append("#뉴욕증시컴백")
+        tags.append("#뉴욕증시상승")
         if is_live:
-            sentences.append("장 초반의 변동성과 하락 압력을 딛고 매수세가 유입되며 주요 지수가 견조한 반등 흐름을 이어가고 있습니다.")
+            sentences.append("장 초반의 변동성을 딛고 주요 지수 전반에 매수세가 유입되며 견조한 상승 흐름을 이어가고 있습니다.")
         else:
-            sentences.append("장 초반의 변동성과 하락 압력을 딛고 장 후반으로 갈수록 매수세가 결집하며 주요 지수가 극적인 반등(컴백)에 성공했습니다.")
+            sentences.append("장 초반의 변동성을 딛고 주요 지수 전반에 저가 매수세가 결집하며 견조한 상승세로 거래를 마쳤습니다.")
     elif sp_ratio < 0:
         tags.append("#지수상단제한")
         if is_live:
-            sentences.append("고금리 장기화 리스크와 경기 둔화 우려 속에 지수 상단이 제한되며 조심스러운 박스권 흐름이 이어지고 있습니다.")
+            sentences.append("고금리 장기화 리스크와 실적 불확실성 속에 지수 상단이 제한되며 조심스러운 박스권 흐름이 이어지고 있습니다.")
         else:
-            sentences.append("고금리 장기화 리스크와 경기 둔화 우려 속에 지수 상단이 제한되며 조심스러운 박스권 흐름이 이어졌습니다.")
+            sentences.append("고금리 장기화 리스크와 실적 불확실성 속에 지수 상단이 제한되며 조심스러운 박스권 흐름으로 장을 마감했습니다.")
     else:
         tags.append("#보합권공방")
         if is_live:
@@ -592,12 +656,12 @@ def generate_us_drivers_nlp(news_list, us_data=None, is_live=False):
 
     # 4문장: 결론 및 관전 포인트
     if is_live:
-        sentences.append("결과적으로 투자자들은 채권 금리의 추가 변동성과 주요 고용·물가 지표를 주시하며 신중한 대응을 이어가고 있습니다.")
+        sentences.append("결과적으로 시장 참여자들은 향후 발표될 빅테크 후속 실적과 주요 고용·물가 지표를 주시하며 신중한 대응을 이어가고 있습니다.")
     else:
-        sentences.append("결과적으로 투자자들은 채권 금리의 추가 안정 여부와 향후 예정된 주요 고용·물가 지표를 주시하며 신중한 대응을 이어가고 있습니다.")
+        sentences.append("결과적으로 투자자들은 채권 금리의 추가 안정 여부와 핵심 빅테크 기업들의 분기 실적 가이던스를 주시하며 신중한 대응을 이어갈 전망입니다.")
 
     if not tags:
-        tags = ["#뉴욕증시", "#야후파이낸스", "#월가동향"]
+        tags = ["#뉴욕증시", "#글로벌마켓", "#월가동향"]
 
     return {
         'sentences': sentences,

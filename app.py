@@ -815,7 +815,7 @@ else:
     st.markdown(us_ribbon_html, unsafe_allow_html=True)
 
     # [신설 코너] 오늘의 시장을 움직인 핵심 동인 (Market Drivers) - Yahoo Finance 기반
-    render_market_drivers_section(us_drivers, "Yahoo Finance", data.get('date', ''))
+    render_market_drivers_section(us_drivers, "Yahoo Finance / 글로벌 외신", data.get('date', ''))
 
     # 2. 오늘의 시장 요약 (핵심 3선 + 심층 브리핑)
     section_summary_title = "📌 현재 장중 시장 상황 요약" if m_status['is_live'] else "📌 오늘의 시장 마감 요약"
