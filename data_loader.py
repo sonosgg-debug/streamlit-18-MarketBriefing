@@ -864,6 +864,104 @@ def get_krx_summary():
 
 
 
+def fetch_us_m7_stocks(m7_symbols, all_data=None, target_date=""):
+    """
+    미국 M7 빅테크 메가캡 주식 실시간/마감 데이터 수집 (다중 안전망 적용)
+    - yfinance historical chart bar가 마감 직후 또는 주말에 NaN으로 누락되는 문제 원천 방지
+    - 1차: Naver 해외증시 REST API (실시간 초고속, 마감 확정치 100% 보장)
+    - 2차: yfinance fast_info (lastPrice, regularMarketPreviousClose)
+    - 3차: yfinance historical chart series (all_data)
+    """
+    m7_name_map = {
+        'NVDA': '엔비디아 (NVIDIA)',
+        'AAPL': '애플 (Apple)',
+        'MSFT': '마이크로소프트 (MSFT)',
+        'AMZN': '아마존 (Amazon)',
+        'GOOGL': '알파벳 (Google)',
+        'META': '메타 (Meta)',
+        'TSLA': '테슬라 (Tesla)'
+    }
+    
+    # 1차: Naver 해외주식 API (NASDAQ .O)
+    naver_items = {}
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        for sym in m7_symbols:
+            try:
+                r = requests.get(f"https://api.stock.naver.com/stock/{sym}.O/basic", headers=headers, timeout=2.5)
+                if r.status_code == 200:
+                    item = r.json()
+                    cp = clean_float(item.get('closePrice'))
+                    diff = clean_float(item.get('compareToPreviousClosePrice'))
+                    ratio = clean_float(item.get('fluctuationsRatio'))
+                    if cp > 0:
+                        naver_items[sym] = {
+                            'name': m7_name_map.get(sym, sym),
+                            'ticker': sym,
+                            'price': round(cp, 2),
+                            'change': round(diff, 2),
+                            'ratio': round(ratio, 2)
+                        }
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"Naver M7 fetch failed: {e}")
+
+    if len(naver_items) == len(m7_symbols):
+        return [naver_items[s] for s in m7_symbols]
+
+    # 2차: yfinance fast_info (Naver 누락분 또는 전체 대체)
+    yf_items = {}
+    missing_syms = [s for s in m7_symbols if s not in naver_items]
+    if missing_syms:
+        try:
+            yf_tickers = yf.Tickers(' '.join(missing_syms))
+            for sym in missing_syms:
+                try:
+                    t = yf_tickers.tickers.get(sym) or yf.Ticker(sym)
+                    fi = t.fast_info
+                    lp = clean_float(getattr(fi, 'last_price', None) or fi.get('lastPrice'))
+                    rpc = clean_float(fi.get('regularMarketPreviousClose') or getattr(fi, 'previous_close', None))
+                    if lp > 0 and rpc > 0:
+                        chg = lp - rpc
+                        ratio = (chg / rpc) * 100
+                        yf_items[sym] = {
+                            'name': m7_name_map.get(sym, sym),
+                            'ticker': sym,
+                            'price': round(lp, 2),
+                            'change': round(chg, 2),
+                            'ratio': round(ratio, 2)
+                        }
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"yfinance fast_info M7 fetch failed: {e}")
+
+    # 3차: all_data historical series (최종 대체)
+    final_list = []
+    for sym in m7_symbols:
+        if sym in naver_items:
+            final_list.append(naver_items[sym])
+        elif sym in yf_items:
+            final_list.append(yf_items[sym])
+        elif all_data is not None and sym in all_data.columns:
+            series = all_data[sym].dropna()
+            if len(series) >= 2:
+                curr = series.iloc[-1]
+                prev = series.iloc[-2]
+                change = curr - prev
+                ratio = (change / prev) * 100
+                final_list.append({
+                    'name': m7_name_map.get(sym, sym),
+                    'ticker': sym,
+                    'price': round(curr, 2),
+                    'change': round(change, 2),
+                    'ratio': round(ratio, 2)
+                })
+
+    return final_list
+
+
 def get_us_summary():
     """
     미국 시장(US) 마감 종합 데이터 반환
@@ -947,30 +1045,8 @@ def get_us_summary():
                     'unit': unit
                 }
 
-        # M7 종목 파싱
-        m7_name_map = {
-            'NVDA': '엔비디아 (NVIDIA)',
-            'AAPL': '애플 (Apple)',
-            'MSFT': '마이크로소프트 (MSFT)',
-            'AMZN': '아마존 (Amazon)',
-            'GOOGL': '알파벳 (Google)',
-            'META': '메타 (Meta)',
-            'TSLA': '테슬라 (Tesla)'
-        }
-        for sym in m7_symbols:
-            if sym in all_data.columns and len(all_data[sym].dropna()) >= 2:
-                series = all_data[sym].dropna()
-                curr = series.iloc[-1]
-                prev = series.iloc[-2]
-                change = curr - prev
-                ratio = (change / prev) * 100
-                result['m7_stocks'].append({
-                    'name': m7_name_map.get(sym, sym),
-                    'ticker': sym,
-                    'price': round(curr, 2),
-                    'change': round(change, 2),
-                    'ratio': round(ratio, 2)
-                })
+        # M7 종목 파싱 (초고신뢰 다중 실시간 소스 전면 적용)
+        result['m7_stocks'] = fetch_us_m7_stocks(m7_symbols, all_data=all_data, target_date=trading_date)
 
         # S&P 500 과거 차트용
         if '^GSPC' in all_data.columns:
@@ -981,6 +1057,8 @@ def get_us_summary():
 
     except Exception as e:
         print(f"Error fetching US summary: {e}")
+        if not result['m7_stocks']:
+            result['m7_stocks'] = fetch_us_m7_stocks(m7_symbols, target_date=trading_date)
 
     return result
 

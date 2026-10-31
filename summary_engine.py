@@ -218,11 +218,11 @@ def generate_us_briefing(us_data, is_live=False, time_str="", market_drivers=Non
     m7_down = [s['name'].split(' ')[0] for s in m7 if s.get('ratio', 0) < 0]
     m7_summary = ""
     if m7_up and m7_down:
-        m7_summary = f"M7 메가캡 종목군에서는 {', '.join(m7_up[:2])}가 선방한 반면, {', '.join(m7_down[:2])}는 조정을 받으며 혼조세"
+        m7_summary = f"M7 메가캡 종목군에서는 {', '.join(m7_up[:2])}가 선방한 반면, {', '.join(m7_down[:2])}는 조정을 받으며 혼조 양상"
     elif m7_up:
-        m7_summary = f"M7 종목군 전반에서 {', '.join(m7_up[:3])} 등을 중심으로 매수세가 확산"
+        m7_summary = f"M7 종목군 전반에서 {', '.join(m7_up[:3])} 등을 중심으로 매수세 유입"
     elif m7_down:
-        m7_summary = f"{', '.join(m7_down[:3])} 등 주요 빅테크 종목들이 일제히 약세를 보이며 지수에 부담"
+        m7_summary = f"{', '.join(m7_down[:3])} 등 주요 빅테크 종목들이 일제히 약세를 보이며 지수 하방 압력"
 
     sox_comment = f" / 필라델피아 반도체 {sox.get('price', 0):,.2f}pt({sox_ratio:+.2f}%)" if sox.get('price', 0) > 0 else ""
 
@@ -243,7 +243,7 @@ def generate_us_briefing(us_data, is_live=False, time_str="", market_drivers=Non
 달러 인덱스(DXY)는 {dxy.get('price', 0):.2f}pt, WTI 원유는 배럴당 ${oil.get('price', 0):.2f}에 거래되었으며, 안전자산인 금 선물은 온스당 ${gold.get('price', 0):,.2f}, 가상자산 대장주인 비트코인은 ${btc.get('price', 0):,.2f}선에서 거래되었습니다. 시장 변동성 지표인 VIX는 {vix.get('price', 0):.2f}pt를 기록했습니다.
 
 **[빅테크(M7) 및 주도 섹터 인사이트]**
-{m7_summary if m7_summary else '엔비디아를 비롯한 반도체 및 AI 하드웨어 밸류체인과 소프트웨어 기업 간의 차별화'}가 이어졌습니다. 
+{m7_summary if m7_summary else '엔비디아를 비롯한 반도체 및 AI 하드웨어 밸류체인과 소프트웨어 기업 간의 차별화'} 양상이 이어졌습니다. 
 투자자들은 단순한 테마성 기대감을 넘어 실질적인 어닝 서프라이즈와 잉여현금흐름을 창출하는 우량주 중심의 압축 포트폴리오 전략을 선호하고 있습니다.
 """.strip()
 

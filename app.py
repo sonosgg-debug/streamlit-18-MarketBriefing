@@ -846,6 +846,7 @@ else:
                     "종목명": st_item.get('name'),
                     "티커": st_item.get('ticker'),
                     "현재가($)": f"${st_item.get('price', 0):,.2f}",
+                    "변동 폭": f"{st_item.get('change', 0):+,.2f}",
                     "등락률": f"{st_item.get('ratio', 0):+.2f}%"
                 })
             df_m7 = pd.DataFrame(m7_data)
