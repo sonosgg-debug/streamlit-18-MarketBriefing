@@ -25,7 +25,7 @@ import streamlit as st
 
 # 1. 페이지 설정 (Streamlit 명령 최우선 실행 보장)
 st.set_page_config(
-    page_title="글로벌 증시 브리핑 | 한국 & 미국",
+    page_title="Market Briefing",
     layout="wide",
     initial_sidebar_state="expanded"
 )
